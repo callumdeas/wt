@@ -13,16 +13,16 @@ export function registerConfig(program: Command): void {
         .option("--editor <cmd>", "Set editor command (code, cursor, vim, nvim, zed)")
         .option("--workspace-mode", "Enable workspace mode")
         .option("--no-workspace-mode", "Disable workspace mode")
+        .option("--pre-start <cmd>", "Set pre-start command (runs before dev server)")
         .option("--start-cmd <cmd>", "Set start command (dev server)")
-        .option("--start-kill-port <port>", "Set port to kill before starting")
         .option("--no-install", "Skip running post-create after config")
         .action(
             async (opts: {
                 postCreate?: string;
                 editor?: string;
                 workspaceMode?: boolean;
+                preStart?: string;
                 startCmd?: string;
-                startKillPort?: string;
                 install?: boolean;
             }) => {
                 const root = requireRoot();
@@ -32,8 +32,8 @@ export function registerConfig(program: Command): void {
                     opts.postCreate !== undefined ||
                     opts.editor !== undefined ||
                     opts.workspaceMode !== undefined ||
-                    opts.startCmd !== undefined ||
-                    opts.startKillPort !== undefined;
+                    opts.preStart !== undefined ||
+                    opts.startCmd !== undefined;
 
                 if (hasBatchFlags) {
                     // Batch mode: merge flags with existing config
@@ -42,8 +42,8 @@ export function registerConfig(program: Command): void {
                     if (opts.postCreate !== undefined) existing.postCreate = opts.postCreate;
                     if (opts.editor !== undefined) existing.editor = opts.editor;
                     if (opts.workspaceMode !== undefined) existing.workspaceMode = opts.workspaceMode;
+                    if (opts.preStart !== undefined) existing.preStart = opts.preStart;
                     if (opts.startCmd !== undefined) existing.startCmd = opts.startCmd;
-                    if (opts.startKillPort !== undefined) existing.startKillPort = parseInt(opts.startKillPort, 10);
 
                     saveConfig(root, existing);
                     output.success("Updated .worktreerc.json");

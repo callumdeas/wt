@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { program } from "commander";
+import updateNotifier from "update-notifier";
+import pkg from "../package.json" with { type: "json" };
 import { registerCd } from "./commands/cd.js";
 import { registerClone } from "./commands/clone.js";
 import { registerConfig } from "./commands/config.js";
@@ -13,7 +15,11 @@ import { registerStart } from "./commands/start.js";
 import { registerUpdate } from "./commands/update.js";
 import { registerWorkspace } from "./commands/workspace.js";
 
-program.name("wt").description("Git worktree manager for bare-repo workflows").version("1.0.0");
+if (pkg.version !== "0.0.0") {
+    updateNotifier({ pkg }).notify();
+}
+
+program.name("wt").description("Git worktree manager for bare-repo workflows").version(pkg.version);
 
 registerClone(program);
 registerNew(program);

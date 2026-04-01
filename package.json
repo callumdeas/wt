@@ -26,13 +26,15 @@
     "dependencies": {
         "@inquirer/prompts": "^7.0.0",
         "commander": "^13.0.0",
-        "picocolors": "^1.1.0"
+        "picocolors": "^1.1.0",
+        "update-notifier": "^7.3.1"
     },
     "devDependencies": {
         "@eslint/js": "^9.14.0",
         "@types/eslint__js": "^8.42.3",
         "@types/jest": "^29.5.14",
         "@types/node": "^22.9.0",
+        "@types/update-notifier": "^6.0.8",
         "dotenv": "^16.4.5",
         "eslint": "^9.14.0",
         "eslint-config-prettier": "^9.1.0",

@@ -21,8 +21,8 @@ describe("loadConfig", () => {
             postCreate: "",
             editor: "code",
             workspaceMode: true,
+            preStart: "",
             startCmd: "",
-            startKillPort: null,
         });
     });
 
@@ -33,8 +33,8 @@ describe("loadConfig", () => {
                 postCreate: "npm ci",
                 editor: "cursor",
                 workspaceMode: false,
+                preStart: "lsof -ti:8081 | xargs kill -9 2>/dev/null || true",
                 startCmd: "yarn dev",
-                startKillPort: 8081,
             }),
         );
 
@@ -42,8 +42,8 @@ describe("loadConfig", () => {
         expect(config.postCreate).toBe("npm ci");
         expect(config.editor).toBe("cursor");
         expect(config.workspaceMode).toBe(false);
+        expect(config.preStart).toBe("lsof -ti:8081 | xargs kill -9 2>/dev/null || true");
         expect(config.startCmd).toBe("yarn dev");
-        expect(config.startKillPort).toBe(8081);
     });
 
     it("auto-migrates legacy .worktreerc", () => {
@@ -55,7 +55,7 @@ describe("loadConfig", () => {
                 "EDITOR_CMD=cursor",
                 "WORKSPACE_MODE=true",
                 'START_CMD="yarn dev bundler"',
-                "START_KILL_PORT=8081",
+                'PRE_START="echo hello"',
             ].join("\n"),
         );
 
@@ -64,7 +64,7 @@ describe("loadConfig", () => {
         expect(config.editor).toBe("cursor");
         expect(config.workspaceMode).toBe(true);
         expect(config.startCmd).toBe("yarn dev bundler");
-        expect(config.startKillPort).toBe(8081);
+        expect(config.preStart).toBe("echo hello");
 
         // Verify migration artifacts
         expect(existsSync(join(TEST_DIR, ".worktreerc.json"))).toBe(true);
@@ -79,8 +79,8 @@ describe("saveConfig", () => {
             postCreate: "npm i",
             editor: "code",
             workspaceMode: true,
+            preStart: "",
             startCmd: "",
-            startKillPort: null,
         });
 
         const raw = readFileSync(join(TEST_DIR, ".worktreerc.json"), "utf-8");

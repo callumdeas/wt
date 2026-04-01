@@ -95,8 +95,8 @@ export function registerClone(program: Command): void {
                         postCreate: opts.postCreate ?? "",
                         editor: opts.editor ?? "code",
                         workspaceMode: opts.workspaceMode ?? true,
+                        preStart: "",
                         startCmd: "",
-                        startKillPort: null,
                     };
                     saveConfig(absDir, config);
                     console.log(`Created .worktreerc.json`);

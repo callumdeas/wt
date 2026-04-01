@@ -7,7 +7,7 @@ import { requireRoot } from "../lib/root.js";
 export function registerStart(program: Command): void {
     program
         .command("start")
-        .description("Kill process on configured port and start the dev server")
+        .description("Run pre-start hook (if configured) then start the dev server")
         .action(() => {
             const root = requireRoot();
             const config = loadConfig(root);
@@ -17,17 +17,10 @@ export function registerStart(program: Command): void {
                 process.exit(1);
             }
 
-            // Kill existing process on port if configured
-            if (config.startKillPort) {
-                try {
-                    const pids = execSync(`lsof -ti:${config.startKillPort}`, { encoding: "utf-8" }).trim();
-                    if (pids) {
-                        output.info(`Killing process on port ${config.startKillPort}...`);
-                        execSync(`echo "${pids}" | xargs kill -9`, { stdio: "inherit" });
-                    }
-                } catch {
-                    // No process on port — that's fine
-                }
+            // Run pre-start hook if configured
+            if (config.preStart) {
+                output.info(`Running pre-start: ${config.preStart}`);
+                execSync(config.preStart, { cwd: process.cwd(), stdio: "inherit" });
             }
 
             output.success(`Starting: ${config.startCmd}`);

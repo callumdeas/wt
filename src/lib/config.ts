@@ -6,16 +6,16 @@ export interface WtConfig {
     postCreate: string;
     editor: string;
     workspaceMode: boolean;
+    preStart: string;
     startCmd: string;
-    startKillPort: number | null;
 }
 
 const DEFAULTS: WtConfig = {
     postCreate: "",
     editor: "code",
     workspaceMode: true,
+    preStart: "",
     startCmd: "",
-    startKillPort: null,
 };
 
 const CONFIG_FILE = ".worktreerc.json";
@@ -59,11 +59,11 @@ function parseLegacy(content: string): Partial<WtConfig> {
             case "WORKSPACE_MODE":
                 config.workspaceMode = value === "true";
                 break;
+            case "PRE_START":
+                config.preStart = value;
+                break;
             case "START_CMD":
                 config.startCmd = value;
-                break;
-            case "START_KILL_PORT":
-                config.startKillPort = value ? parseInt(value, 10) : null;
                 break;
         }
     }
@@ -103,12 +103,13 @@ export function loadConfig(root: string): WtConfig {
     if (!existsSync(path)) return { ...DEFAULTS };
 
     const raw = JSON.parse(readFileSync(path, "utf-8"));
+
     return {
         postCreate: raw.postCreate ?? DEFAULTS.postCreate,
         editor: raw.editor ?? DEFAULTS.editor,
         workspaceMode: raw.workspaceMode ?? DEFAULTS.workspaceMode,
+        preStart: raw.preStart ?? DEFAULTS.preStart,
         startCmd: raw.startCmd ?? DEFAULTS.startCmd,
-        startKillPort: raw.startKillPort ?? DEFAULTS.startKillPort,
     };
 }
 
@@ -155,21 +156,18 @@ export async function interactiveConfig(root: string): Promise<WtConfig> {
         default: existing.workspaceMode,
     });
 
+    const preStart = await input({
+        message:
+            'Pre-start command (runs before dev server, e.g. "lsof -ti:8081 | xargs kill -9 2>/dev/null || true"):',
+        default: existing.preStart || undefined,
+    });
+
     const startCmd = await input({
         message: 'Start command (dev server, e.g. "yarn dev"):',
         default: existing.startCmd || undefined,
     });
 
-    let startKillPort: number | null = null;
-    if (startCmd) {
-        const portStr = await input({
-            message: "Port to kill before starting (e.g. 8081, leave empty to skip):",
-            default: existing.startKillPort?.toString() ?? "",
-        });
-        startKillPort = portStr ? parseInt(portStr, 10) : null;
-    }
-
-    const config: WtConfig = { postCreate, editor, workspaceMode, startCmd, startKillPort };
+    const config: WtConfig = { postCreate, editor, workspaceMode, preStart, startCmd };
     saveConfig(root, config);
 
     return config;

@@ -15,7 +15,6 @@ RUN npm ci
 
 FROM dev AS build
 
-COPY src/index.* ./
 COPY src/ ./src
 
 RUN npx tsc

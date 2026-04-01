@@ -1,4 +1,5 @@
-### Full Fanduel Datadog v2.2 tagging schema can be found here: https://fanduel.atlassian.net/wiki/spaces/PE1/pages/310074016861/Tag+Baseline+-+Datadog+Service+Catalog---
+### Full Fanduel Datadog v2.2 tagging schema can be found here: https://fanduel.atlassian.net/wiki/spaces/PE1/pages/310074016861/Tag+Baseline+-+Datadog+Service+Catalog
+---
 schema-version: v2.2
 dd-service: wt
 team: wizards-engineers
@@ -6,10 +7,9 @@ application: wt  ## Where applicable, this can be the parent application or proj
 description: Git worktree manager for bare-repo workflows. CLI tool that simplifies creating, navigating, and managing git worktrees using a   bare-repo structure. Supports per-repo configuration, VS Code/Cursor workspace integration, and batch flags for AI agent use.
 tier: p4
 lifecycle: experimental
-# type: custom
-# languages:
-#  - python
-#  - java
+type: custom
+languages:
+  - typescript
 contacts:
   - type: slack
     name: sportsbook-wizards
@@ -50,7 +50,7 @@ tags:
   - kind:scripts
   - division:fd
   - domain:sportsbook
-  - vertical:sportsbook
+  - vertical:online-channels
 #  - platform:[YOUR_FANDUEL_PLATFORM]
 #  - deployment-ui:[YOUR_DEPLOYMENT_UI]
 #  - application-state:[YOUR_APPLICATION_STATE]

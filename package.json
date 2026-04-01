@@ -3,7 +3,13 @@
     "author": "wizards-engineers",
     "type": "module",
     "version": "0.0.0",
-    "main": "dist/index.js",
+    "description": "Git worktree manager for bare-repo workflows",
+    "bin": {
+        "wt": "./dist/cli.js"
+    },
+    "files": [
+        "dist"
+    ],
     "scripts": {
         "prepare": "husky",
         "lint": "npm run lint:prettier && eslint",
@@ -11,11 +17,16 @@
         "format": "prettier --write '**/*.{md,json,js,ts}'",
         "test": "jest",
         "ci:test": "jest --ci --coverage --reporters=default",
-        "build": "npm run lint && rm -rf dist/* && tsc && tsc --build tsconfig.json"
+        "build": "rm -rf dist/* && tsc"
     },
     "engines": {
-        "node": "^22",
+        "node": ">=22",
         "npm": ">=8"
+    },
+    "dependencies": {
+        "@inquirer/prompts": "^7.0.0",
+        "commander": "^13.0.0",
+        "picocolors": "^1.1.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.14.0",

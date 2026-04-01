@@ -21,6 +21,7 @@ steps:
               propagate-environment: true
               workdir: /app
               volumes: ["./src:/app/src",
+                        "./test:/app/test",
                         "./package.json:/app/package.json"]
         agents:
           queue: sportsbook-tests
@@ -48,6 +49,7 @@ steps:
               workdir: /app
               volumes: ["./reports:/app/reports",
                         "./src:/app/src",
+                        "./test:/app/test",
                         "./package.json:/app/package.json"]
         agents:
           queue: sportsbook-tests
@@ -71,7 +73,7 @@ steps:
     depends_on:
       - "build-checks"
 
-  - label: "Publish Package"
+  - label: ":jfrog: Publish Package :jfrog:"
     depends_on:
       - build-checks
     if: build.tag != null
@@ -88,6 +90,7 @@ steps:
           mount-buildkite-agent: true
           propagate-environment: true
           mount-ssh-agent: true
+          image: "077700697743.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/node:22-slim"
           workdir: /app
     agents:
       queue: sportsbook-build

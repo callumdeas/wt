@@ -44,11 +44,12 @@ This appends a small wrapper function to `~/.zshrc` (idempotent — safe to run 
 
 ### Setup
 
-| Command                | Description                                       |
-| ---------------------- | ------------------------------------------------- |
-| `wt clone <url> [dir]` | Clone a repo into a bare worktree structure       |
-| `wt config`            | Configure `.worktreerc.json` for the current repo |
-| `wt init`              | Install shell integration into `~/.zshrc`         |
+| Command                | Description                                             |
+| ---------------------- | ------------------------------------------------------- |
+| `wt clone <url> [dir]` | Clone a repo into a bare worktree structure             |
+| `wt convert`           | Convert an existing git clone into a bare worktree repo |
+| `wt config`            | Configure `.worktreerc.json` for the current repo       |
+| `wt init`              | Install shell integration into `~/.zshrc`               |
 
 ### Worktree management
 
@@ -87,6 +88,7 @@ Some commands accept flags for non-interactive (batch) use:
 
 ```shell
 wt clone <url> --post-create "npm ci" --editor cursor --workspace-mode --no-install
+wt convert --post-create "npm ci" --editor cursor --workspace-mode --no-install
 wt get <pattern> --first       # auto-select first match
 wt get <pattern> --exact       # exact branch name match only
 wt rm <name> --force --delete-branch

@@ -1,10 +1,8 @@
-import { confirm } from "@inquirer/prompts";
 import type { Command } from "commander";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import type { WtConfig } from "../lib/config.js";
-import { interactiveConfig, loadConfig, saveConfig } from "../lib/config.js";
+import { postSetupFlow } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 
@@ -58,7 +56,10 @@ export function registerClone(program: Command): void {
 
                 // Fetch to populate remote refs
                 console.log("Fetching remote refs...");
-                execSync(`git -C "${absDir}/.bare" fetch origin`, { stdio: "inherit" });
+                git.fetch(absDir);
+
+                // Ensure origin/HEAD is set so defaultBranch can detect non-standard defaults
+                git.remoteSetHead(absDir);
 
                 // Detect default branch
                 const defBranch = git.defaultBranch(absDir);
@@ -82,49 +83,7 @@ export function registerClone(program: Command): void {
                 output.dim(`  Worktree: ${worktreeDir}`);
                 console.log();
 
-                // Config creation
-                if (opts.config === false) {
-                    // --no-config: skip entirely
-                } else if (
-                    opts.postCreate !== undefined ||
-                    opts.editor !== undefined ||
-                    opts.workspaceMode !== undefined
-                ) {
-                    // Batch mode: create config from flags
-                    const config: WtConfig = {
-                        postCreate: opts.postCreate ?? "",
-                        editor: opts.editor ?? "code",
-                        workspaceMode: opts.workspaceMode ?? true,
-                        preStart: "",
-                        startCmd: "",
-                    };
-                    saveConfig(absDir, config);
-                    console.log(`Created .worktreerc.json`);
-                } else {
-                    // Interactive config
-                    await interactiveConfig(absDir);
-                }
-
-                // Run post-create if configured
-                const config = loadConfig(absDir);
-                if (config.postCreate) {
-                    if (opts.install === false) {
-                        console.log("Skipping post-create command (--no-install)");
-                    } else if (opts.install === true) {
-                        console.log(`Running: ${config.postCreate}`);
-                        execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
-                    } else {
-                        // Interactive
-                        const run = await confirm({
-                            message: `Run post-create command: ${config.postCreate}?`,
-                            default: true,
-                        });
-                        if (run) {
-                            console.log(`Running: ${config.postCreate}`);
-                            execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
-                        }
-                    }
-                }
+                await postSetupFlow(absDir, worktreeDir, opts);
             },
         );
 }

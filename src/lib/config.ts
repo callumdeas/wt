@@ -1,4 +1,5 @@
 import { confirm, input, select } from "@inquirer/prompts";
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -171,4 +172,55 @@ export async function interactiveConfig(root: string): Promise<WtConfig> {
     saveConfig(root, config);
 
     return config;
+}
+
+export interface PostSetupOpts {
+    config?: boolean;
+    postCreate?: string;
+    editor?: string;
+    workspaceMode?: boolean;
+    install?: boolean;
+}
+
+/**
+ * Shared post-setup flow for clone and convert: create config, then
+ * optionally run the post-create command in the worktree directory.
+ */
+export async function postSetupFlow(root: string, worktreeDir: string, opts: PostSetupOpts): Promise<void> {
+    // Config creation
+    if (opts.config === false) {
+        // --no-config: skip entirely
+    } else if (opts.postCreate !== undefined || opts.editor !== undefined || opts.workspaceMode !== undefined) {
+        const config: WtConfig = {
+            postCreate: opts.postCreate ?? "",
+            editor: opts.editor ?? "code",
+            workspaceMode: opts.workspaceMode ?? true,
+            preStart: "",
+            startCmd: "",
+        };
+        saveConfig(root, config);
+        console.log("Created .worktreerc.json");
+    } else {
+        await interactiveConfig(root);
+    }
+
+    // Run post-create if configured
+    const config = loadConfig(root);
+    if (config.postCreate) {
+        if (opts.install === false) {
+            console.log("Skipping post-create command (--no-install)");
+        } else if (opts.install === true) {
+            console.log(`Running: ${config.postCreate}`);
+            execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
+        } else {
+            const run = await confirm({
+                message: `Run post-create command: ${config.postCreate}?`,
+                default: true,
+            });
+            if (run) {
+                console.log(`Running: ${config.postCreate}`);
+                execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
+            }
+        }
+    }
 }

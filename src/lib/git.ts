@@ -2,11 +2,12 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 function exec(cmd: string, opts?: { cwd?: string; stdio?: "inherit" | "pipe" }): string {
-    return execSync(cmd, {
+    const result = execSync(cmd, {
         cwd: opts?.cwd,
         stdio: opts?.stdio ?? "pipe",
         encoding: "utf-8",
-    }).trim();
+    });
+    return result?.trim() ?? "";
 }
 
 /** Get the .bare directory path from a worktree root */
@@ -41,6 +42,10 @@ export function worktreeAdd(
 export function worktreeRemove(root: string, worktreePath: string, force: boolean = false): void {
     const forceFlag = force ? " --force" : "";
     exec(`git -C "${bareDir(root)}" worktree remove${forceFlag} "${worktreePath}"`, { stdio: "inherit" });
+}
+
+export function worktreePrune(root: string): void {
+    exec(`git -C "${bareDir(root)}" worktree prune`);
 }
 
 export interface WorktreeEntry {
@@ -104,6 +109,18 @@ export function remoteBranchExists(root: string, branch: string): boolean {
     }
 }
 
+/**
+ * Set refs/remotes/origin/HEAD by querying the remote.
+ * Ensures defaultBranch() can detect non-standard defaults (e.g. trunk, develop).
+ */
+export function remoteSetHead(root: string): void {
+    try {
+        exec(`git -C "${bareDir(root)}" remote set-head origin --auto`);
+    } catch {
+        // Non-fatal: defaultBranch() has its own fallback
+    }
+}
+
 export function defaultBranch(root: string): string {
     try {
         const ref = exec(`git -C "${bareDir(root)}" symbolic-ref refs/remotes/origin/HEAD`);
@@ -148,4 +165,28 @@ export function cloneBare(url: string, targetDir: string): void {
 
 export function configSet(bareDir: string, key: string, value: string): void {
     exec(`git -C "${bareDir}" config ${key} "${value}"`);
+}
+
+/**
+ * Check if dir is a normal (non-bare) git repository with a .git directory.
+ * Returns false for bare repos, submodules (.git is a file), and non-repos.
+ */
+export function isNormalGitRepo(dir: string): boolean {
+    try {
+        const result = exec(`git -C "${dir}" rev-parse --git-dir`);
+        return result === ".git";
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Check if the working tree has modified or staged changes.
+ * Untracked files (??) are intentionally ignored — they will be
+ * moved along with everything else during conversion.
+ */
+export function isCleanWorkingTree(dir: string): boolean {
+    const status = exec(`git -C "${dir}" status --porcelain`);
+    if (!status) return true;
+    return !status.split("\n").some((l) => l.trim() && !l.startsWith("??"));
 }

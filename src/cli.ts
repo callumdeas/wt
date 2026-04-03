@@ -5,6 +5,7 @@ import pkg from "../package.json" with { type: "json" };
 import { registerCd } from "./commands/cd.js";
 import { registerClone } from "./commands/clone.js";
 import { registerConfig } from "./commands/config.js";
+import { registerConvert } from "./commands/convert.js";
 import { registerGet } from "./commands/get.js";
 import { registerInit } from "./commands/init.js";
 import { registerLs } from "./commands/ls.js";
@@ -22,6 +23,7 @@ if (pkg.version !== "0.0.0") {
 program.name("wt").description("Git worktree manager for bare-repo workflows").version(pkg.version);
 
 registerClone(program);
+registerConvert(program);
 registerNew(program);
 registerGet(program);
 registerLs(program);

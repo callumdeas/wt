@@ -5,6 +5,7 @@
         "strict": true,
         "module": "NodeNext",
         "outDir": "./dist",
+        "rootDir": "./src",
         "moduleResolution": "NodeNext",
         "baseUrl": ".",
         "sourceMap": true,

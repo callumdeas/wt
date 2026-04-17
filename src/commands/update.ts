@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { loadConfig } from "../lib/config.js";
 import * as git from "../lib/git.js";
+import * as output from "../lib/output.js";
 import { requireRoot } from "../lib/root.js";
 
 export function registerUpdate(program: Command): void {
@@ -12,10 +13,10 @@ export function registerUpdate(program: Command): void {
             loadConfig(root); // trigger migration if needed
             const defBranch = git.defaultBranch(root);
 
-            console.log("Fetching latest from origin...");
+            output.info("Fetching latest from origin...");
             git.fetch(root);
 
-            console.log(`Merging origin/${defBranch} into current branch...`);
+            output.info(`Merging origin/${defBranch} into current branch...`);
             git.merge(process.cwd(), `origin/${defBranch}`);
         });
 }

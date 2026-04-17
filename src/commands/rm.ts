@@ -1,10 +1,13 @@
-import { confirm, select } from "@inquirer/prompts";
 import type { Command } from "commander";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import ora from "ora";
 import { loadConfig } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
+import { pc, promptTheme } from "../lib/output.js";
+import { confirm, select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
 import { workspaceRemove } from "../lib/workspace.js";
 
@@ -26,10 +29,14 @@ export function registerRm(program: Command): void {
         .command("rm")
         .alias("remove")
         .description("Remove a worktree")
-        .argument("[name]", "Worktree directory name (interactive if omitted)")
-        .option("--force", "Force remove even with uncommitted changes")
-        .option("--delete-branch", "Delete the branch after removing")
-        .option("--keep-branch", "Keep the branch (don't prompt)")
+        .argument("[name]", "Worktree directory name (interactive picker if omitted)")
+        .option("--force", "Force remove even with uncommitted changes (skip confirmation)")
+        .option("--delete-branch", "Delete the branch after removing (skip confirmation)")
+        .option("--keep-branch", "Keep the branch (skip confirmation)")
+        .addHelpText(
+            "after",
+            `\n${pc.bold("Fully non-interactive example:")}\n` + pc.dim("  wt rm my-feature --force --delete-branch"),
+        )
         .action(
             async (
                 name: string | undefined,
@@ -47,13 +54,18 @@ export function registerRm(program: Command): void {
                         process.exit(1);
                     }
 
-                    const selected = await select({
-                        message: "Select worktree to remove:",
-                        choices: entries.map((e) => ({
-                            value: e.dirname,
-                            name: `${e.dirname} → ${e.branch}`,
-                        })),
-                    });
+                    const maxLen = Math.max(...entries.map((e) => e.dirname.length));
+                    const selected = await select(
+                        {
+                            message: "🧹 Select worktree to remove:",
+                            choices: entries.map((e) => ({
+                                value: e.dirname,
+                                name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
+                            })),
+                            theme: promptTheme,
+                        },
+                        { output: process.stderr },
+                    );
                     name = selected;
                 }
 
@@ -64,67 +76,93 @@ export function registerRm(program: Command): void {
                     process.exit(1);
                 }
 
+                // Detect if the user's shell is inside the worktree being removed
+                const cwd = resolve(process.cwd());
+                const resolvedWorktree = resolve(worktreeDir);
+                const insideWorktree = cwd === resolvedWorktree || cwd.startsWith(`${resolvedWorktree}/`);
+
                 // Get branch name before removing
                 const branchName = git.currentBranch(worktreeDir);
 
-                // Pre-delete heavy directories for speed
-                let deletedAny = false;
-                for (const dir of HEAVY_DIRS) {
-                    const dirPath = join(worktreeDir, dir);
-                    if (existsSync(dirPath)) {
-                        deletedAny = true;
-                        rmSync(dirPath, { recursive: true, force: true });
+                // Front-load branch deletion decision — ask before any destructive work
+                let shouldDeleteBranch = false;
+                if (branchName && branchName !== defBranch) {
+                    if (opts.deleteBranch) {
+                        shouldDeleteBranch = true;
+                    } else if (!opts.keepBranch) {
+                        shouldDeleteBranch = await confirm(
+                            {
+                                message: `Delete branch '${branchName}'?`,
+                                default: false,
+                                theme: promptTheme,
+                            },
+                            { output: process.stderr },
+                        );
                     }
                 }
 
-                if (deletedAny) {
-                    output.dim("Cleaned heavy directories");
-                }
-
-                // Remove worktree (force if we pre-deleted dirs or user requested)
-                const forceRemove = deletedAny || opts.force === true;
+                const spinner = ora({ text: "Removing worktree...", stream: process.stderr }).start();
 
                 try {
-                    git.worktreeRemove(root, worktreeDir, forceRemove);
-                } catch (err) {
-                    if (!opts.force) {
-                        output.warn("Worktree has uncommitted changes");
-                        const forceConfirm = await confirm({
-                            message: "Force remove anyway? (changes will be lost)",
-                            default: false,
-                        });
-                        if (forceConfirm) {
-                            git.worktreeRemove(root, worktreeDir, true);
-                        } else {
-                            process.exit(1);
+                    // Pre-delete heavy directories for speed (async so the spinner can animate)
+                    let deletedAny = false;
+                    for (const dir of HEAVY_DIRS) {
+                        const dirPath = join(worktreeDir, dir);
+                        if (existsSync(dirPath)) {
+                            if (!deletedAny) spinner.text = "Cleaning heavy directories...";
+                            deletedAny = true;
+                            await rm(dirPath, { recursive: true, force: true });
                         }
-                    } else {
-                        throw err;
                     }
+
+                    // Remove worktree (force if we pre-deleted dirs or user requested)
+                    const forceRemove = deletedAny || opts.force === true;
+
+                    spinner.text = "Removing worktree...";
+
+                    try {
+                        git.worktreeRemove(root, worktreeDir, forceRemove);
+                    } catch (err) {
+                        if (!opts.force) {
+                            spinner.stop();
+                            output.warn("Worktree has uncommitted changes");
+                            const forceConfirm = await confirm(
+                                {
+                                    message: "Force remove anyway? (changes will be lost)",
+                                    default: false,
+                                    theme: promptTheme,
+                                },
+                                { output: process.stderr },
+                            );
+                            if (forceConfirm) {
+                                spinner.start("Removing worktree...");
+                                git.worktreeRemove(root, worktreeDir, true);
+                            } else {
+                                process.exit(1);
+                            }
+                        } else {
+                            throw err;
+                        }
+                    }
+                } finally {
+                    spinner.stop();
                 }
 
                 output.success("Worktree removed");
+
+                if (insideWorktree) {
+                    process.stdout.write(root);
+                }
 
                 // Remove from workspace
                 if (config.workspaceMode) {
                     workspaceRemove(root, worktreeDir);
                 }
 
-                // Branch deletion
-                if (branchName && branchName !== defBranch) {
-                    if (opts.deleteBranch) {
-                        git.branchDelete(root, branchName);
-                        output.success("Branch deleted");
-                    } else if (!opts.keepBranch) {
-                        const del = await confirm({
-                            message: `Delete branch '${branchName}'?`,
-                            default: false,
-                        });
-                        if (del) {
-                            git.branchDelete(root, branchName);
-                            output.success("Branch deleted");
-                        }
-                    }
+                // Execute deferred branch deletion
+                if (shouldDeleteBranch) {
+                    git.branchDelete(root, branchName!);
+                    output.success("Branch deleted");
                 }
             },
         );

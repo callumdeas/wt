@@ -5,6 +5,7 @@
 - [@fanduel/wt](#fanduelwt)
     - [Installation](#installation)
     - [Setup](#setup)
+    - [Upgrading](#upgrading)
     - [Commands](#commands)
     - [Configuration](#configuration)
     - [Development Guide](#development-guide)
@@ -31,7 +32,7 @@ printf '@fanduel:registry=https://fanduel.pe.jfrog.io/artifactory/api/npm/fd-npm
 
 ## Setup
 
-After installing, run `wt init` to add shell integration to your shell config. This enables `wt cd` to change directories:
+After installing, run `wt init` to add shell integration to your shell config. This enables `wt cd`, `wt new`, and `wt get` to automatically change into the target worktree directory:
 
 ```shell
 wt init
@@ -40,25 +41,35 @@ source ~/.zshrc
 
 This appends a small wrapper function to `~/.zshrc` (idempotent — safe to run multiple times).
 
+## Upgrading
+
+```shell
+npm install -g @fanduel/wt
+wt init --force
+source ~/.zshrc
+```
+
+`wt init --force` replaces the shell wrapper function with the latest version. Without `--force`, `wt init` skips the update if the wrapper already exists.
+
 ## Commands
 
 ### Setup
 
-| Command                | Description                                             |
-| ---------------------- | ------------------------------------------------------- |
-| `wt clone <url> [dir]` | Clone a repo into a bare worktree structure             |
-| `wt convert`           | Convert an existing git clone into a bare worktree repo |
-| `wt config`            | Configure `.worktreerc.json` for the current repo       |
-| `wt init`              | Install shell integration into `~/.zshrc`               |
+| Command                | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `wt clone <url> [dir]` | Clone a repo into a bare worktree structure                     |
+| `wt convert`           | Convert an existing git clone into a bare worktree repo         |
+| `wt config`            | Configure `.worktreerc.json` for the current repo               |
+| `wt init [--force]`    | Install shell integration into `~/.zshrc` (`--force` to update) |
 
 ### Worktree management
 
-| Command            | Description                                                     |
-| ------------------ | --------------------------------------------------------------- |
-| `wt new <branch>`  | Create a new worktree with a new branch from the default branch |
-| `wt get <pattern>` | Check out an existing remote branch into a worktree             |
-| `wt ls`            | List all worktrees with branch info                             |
-| `wt rm [name]`     | Remove a worktree (interactive if no name given)                |
+| Command            | Description                                                  |
+| ------------------ | ------------------------------------------------------------ |
+| `wt new <branch>`  | Create a new worktree from the default branch and cd into it |
+| `wt get <pattern>` | Check out an existing branch into a worktree and cd into it  |
+| `wt ls`            | List all worktrees with branch info                          |
+| `wt rm [name]`     | Remove a worktree (interactive if no name given)             |
 
 ### Navigation
 
@@ -89,6 +100,8 @@ Some commands accept flags for non-interactive (batch) use:
 ```shell
 wt clone <url> --post-create "npm ci" --editor cursor --workspace-mode --no-install
 wt convert --post-create "npm ci" --editor cursor --workspace-mode --no-install
+wt convert --port feat/auth feat/payments  # port specific branches as worktrees
+wt convert --no-port-branches              # skip branch porting prompt
 wt get <pattern> --first       # auto-select first match
 wt get <pattern> --exact       # exact branch name match only
 wt rm <name> --force --delete-branch
@@ -148,6 +161,8 @@ Run tests:
 ```shell
 npx jest --watchman=false
 ```
+
+Report bugs, suggest features, or share ideas via [GitHub Issues](https://github.com/fanduel/wt/issues).
 
 ## Publishing a New Version
 

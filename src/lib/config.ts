@@ -1,7 +1,9 @@
-import { confirm, input, select } from "@inquirer/prompts";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import * as output from "./output.js";
+import { pc, promptTheme } from "./output.js";
+import { confirm, input, select } from "./prompt.js";
 
 export interface WtConfig {
     postCreate: string;
@@ -89,7 +91,7 @@ export function migrateIfNeeded(root: string): boolean {
     writeFileSync(modern, JSON.stringify(config, null, 2) + "\n");
     renameSync(legacy, legacy + ".bak");
 
-    console.log(`Migrated ${LEGACY_CONFIG_FILE} → ${CONFIG_FILE} (backup: ${LEGACY_CONFIG_FILE}.bak)`);
+    output.info(`Migrated ${LEGACY_CONFIG_FILE} → ${CONFIG_FILE} (backup: ${LEGACY_CONFIG_FILE}.bak)`);
     return true;
 }
 
@@ -135,38 +137,60 @@ export function configExists(root: string): boolean {
 export async function interactiveConfig(root: string): Promise<WtConfig> {
     const existing = configExists(root) ? loadConfig(root) : DEFAULTS;
 
-    const postCreate = await input({
-        message: "Post-create command (run after creating a worktree):",
-        default: existing.postCreate || undefined,
-    });
+    const stderrCtx = { output: process.stderr };
 
-    const editor = await select({
-        message: "Editor command:",
-        choices: [
-            { value: "code", name: "VS Code (code)" },
-            { value: "cursor", name: "Cursor (cursor)" },
-            { value: "vim", name: "Vim (vim)" },
-            { value: "nvim", name: "Neovim (nvim)" },
-            { value: "zed", name: "Zed (zed)" },
-        ],
-        default: existing.editor,
-    });
+    const postCreate = await input(
+        {
+            message: "Post-create command (run after creating a worktree):",
+            default: existing.postCreate || undefined,
+            theme: promptTheme,
+        },
+        stderrCtx,
+    );
 
-    const workspaceMode = await confirm({
-        message: "Enable workspace mode? (single editor window for all worktrees)",
-        default: existing.workspaceMode,
-    });
+    const editor = await select(
+        {
+            message: "Editor command:",
+            choices: [
+                { value: "code", name: `${pc.cyan("code")}   ${pc.dim("— VS Code")}` },
+                { value: "cursor", name: `${pc.cyan("cursor")} ${pc.dim("— Cursor")}` },
+                { value: "vim", name: `${pc.cyan("vim")}    ${pc.dim("— Vim")}` },
+                { value: "nvim", name: `${pc.cyan("nvim")}   ${pc.dim("— Neovim")}` },
+                { value: "zed", name: `${pc.cyan("zed")}    ${pc.dim("— Zed")}` },
+            ],
+            default: existing.editor,
+            theme: promptTheme,
+        },
+        stderrCtx,
+    );
 
-    const preStart = await input({
-        message:
-            'Pre-start command (runs before dev server, e.g. "lsof -ti:8081 | xargs kill -9 2>/dev/null || true"):',
-        default: existing.preStart || undefined,
-    });
+    const workspaceMode = await confirm(
+        {
+            message: "Enable workspace mode? (single editor window for all worktrees)",
+            default: existing.workspaceMode,
+            theme: promptTheme,
+        },
+        stderrCtx,
+    );
 
-    const startCmd = await input({
-        message: 'Start command (dev server, e.g. "yarn dev"):',
-        default: existing.startCmd || undefined,
-    });
+    const preStart = await input(
+        {
+            message:
+                'Pre-start command (runs before dev server, e.g. "lsof -ti:8081 | xargs kill -9 2>/dev/null || true"):',
+            default: existing.preStart || undefined,
+            theme: promptTheme,
+        },
+        stderrCtx,
+    );
+
+    const startCmd = await input(
+        {
+            message: 'Start command (dev server, e.g. "yarn dev"):',
+            default: existing.startCmd || undefined,
+            theme: promptTheme,
+        },
+        stderrCtx,
+    );
 
     const config: WtConfig = { postCreate, editor, workspaceMode, preStart, startCmd };
     saveConfig(root, config);
@@ -199,7 +223,7 @@ export async function postSetupFlow(root: string, worktreeDir: string, opts: Pos
             startCmd: "",
         };
         saveConfig(root, config);
-        console.log("Created .worktreerc.json");
+        output.success("Created .worktreerc.json");
     } else {
         await interactiveConfig(root);
     }
@@ -208,17 +232,21 @@ export async function postSetupFlow(root: string, worktreeDir: string, opts: Pos
     const config = loadConfig(root);
     if (config.postCreate) {
         if (opts.install === false) {
-            console.log("Skipping post-create command (--no-install)");
+            output.dim("Skipping post-create command (--no-install)");
         } else if (opts.install === true) {
-            console.log(`Running: ${config.postCreate}`);
+            output.dim(`Running: ${config.postCreate}`);
             execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
         } else {
-            const run = await confirm({
-                message: `Run post-create command: ${config.postCreate}?`,
-                default: true,
-            });
+            const run = await confirm(
+                {
+                    message: `Run post-create command: ${config.postCreate}?`,
+                    default: true,
+                    theme: promptTheme,
+                },
+                { output: process.stderr },
+            );
             if (run) {
-                console.log(`Running: ${config.postCreate}`);
+                output.dim(`Running: ${config.postCreate}`);
                 execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
             }
         }

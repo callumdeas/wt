@@ -20,9 +20,9 @@ export function registerWorkspace(program: Command): void {
             workspaceSync(root, paths);
 
             const filePath = workspaceFilePath(root);
-            console.log("Synced workspace file with existing worktrees:");
+            output.info("Synced workspace file with existing worktrees:");
             for (const e of entries) {
-                console.log(`  Added: ${e.dirname}`);
+                output.dim(`  Added: ${e.dirname}`);
             }
             output.success(`Workspace file updated: ${filePath}`);
         });
@@ -50,7 +50,7 @@ export function registerWorkspace(program: Command): void {
             if (deleted) {
                 output.success(`Workspace file deleted: ${workspaceFilePath(root)}`);
             } else {
-                console.log("No workspace file to delete.");
+                output.info("No workspace file to delete.");
             }
         });
 }

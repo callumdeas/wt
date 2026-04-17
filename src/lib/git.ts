@@ -1,13 +1,20 @@
+import type { StdioOptions } from "node:child_process";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 function exec(cmd: string, opts?: { cwd?: string; stdio?: "inherit" | "pipe" }): string {
+    // When "inherit", redirect child stdout to stderr so git output reaches the
+    // terminal without polluting the stdout IPC channel used by the shell wrapper.
+    const stdio: StdioOptions =
+        opts?.stdio === "inherit" ? ["inherit", process.stderr, "inherit"] : (opts?.stdio ?? "pipe");
     const result = execSync(cmd, {
         cwd: opts?.cwd,
-        stdio: opts?.stdio ?? "pipe",
+        stdio,
         encoding: "utf-8",
     });
-    return result?.trim() ?? "";
+    // execSync returns null when stdio is "inherit" — TS types don't model this
+    if (result == null) return "";
+    return result.trim();
 }
 
 /** Get the .bare directory path from a worktree root */
@@ -87,8 +94,34 @@ export function branchListRemote(root: string): string[] {
         .map((b) => b.replace(/^origin\//, ""));
 }
 
+export function branchListLocal(root: string): string[] {
+    const raw = exec(`git -C "${bareDir(root)}" branch --format="%(refname:short)"`);
+    return raw
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean);
+}
+
+export interface LocalBranch {
+    name: string;
+    date: string;
+}
+
+export function branchListLocalWithDates(root: string): LocalBranch[] {
+    const raw = exec(
+        `git -C "${bareDir(root)}" for-each-ref --sort=-committerdate refs/heads/ --format="%(refname:short)%09%(committerdate:relative)"`,
+    );
+    return raw
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+            const [name, date] = line.split("\t");
+            return { name: name.trim(), date: date?.trim() ?? "" };
+        });
+}
+
 export function branchDelete(root: string, branch: string): void {
-    exec(`git -C "${bareDir(root)}" branch -D "${branch}"`, { stdio: "inherit" });
+    exec(`git -C "${bareDir(root)}" branch -D "${branch}"`, { cwd: bareDir(root), stdio: "inherit" });
 }
 
 export function branchExists(root: string, branch: string): boolean {
@@ -140,6 +173,17 @@ export function setUpstream(worktreePath: string, branch: string): void {
     } catch {
         // Ignore — upstream may already be set
     }
+}
+
+/**
+ * Configure tracking for a branch via git config.
+ * Unlike setUpstream(), this does NOT require origin/<branch> to exist yet —
+ * it writes the config entries directly, so it works for newly created branches
+ * that haven't been pushed.
+ */
+export function configureTracking(worktreePath: string, branch: string): void {
+    exec(`git -C "${worktreePath}" config "branch.${branch}.remote" "origin"`);
+    exec(`git -C "${worktreePath}" config "branch.${branch}.merge" "refs/heads/${branch}"`);
 }
 
 export function push(worktreePath: string, branch: string, setUpstream: boolean = false): void {

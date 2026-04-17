@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import { basename } from "node:path";
-import pc from "picocolors";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
+import { pc } from "../lib/output.js";
 import { requireRoot } from "../lib/root.js";
 
 export function registerLs(program: Command): void {
@@ -20,8 +20,8 @@ export function registerLs(program: Command): void {
             }
 
             const repoName = basename(root);
-            console.log(pc.bold(pc.magenta(`📁 ${repoName} worktrees`)));
-            console.log();
+            output.plain(pc.bold(pc.magenta(`🗺️  ${repoName} worktrees`)));
+            output.blank();
 
             // Detect current worktree
             const cwd = process.cwd();
@@ -37,7 +37,7 @@ export function registerLs(program: Command): void {
                 const marker = entry.dirname === currentDirname ? pc.green("●") : " ";
                 const name = pc.bold(pc.cyan(entry.dirname.padEnd(maxLen)));
                 const branch = pc.yellow(entry.branch);
-                console.log(`  ${marker} ${name}  →  ${branch}`);
+                output.plain(`  ${marker} ${name}  →  ${branch}`);
             }
         });
 }

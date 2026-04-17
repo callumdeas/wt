@@ -1,8 +1,9 @@
-import { confirm } from "@inquirer/prompts";
 import type { Command } from "commander";
 import { execSync } from "node:child_process";
 import { configExists, interactiveConfig, loadConfig, saveConfig } from "../lib/config.js";
 import * as output from "../lib/output.js";
+import { promptTheme } from "../lib/output.js";
+import { confirm } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
 
 export function registerConfig(program: Command): void {
@@ -47,18 +48,21 @@ export function registerConfig(program: Command): void {
 
                     saveConfig(root, existing);
                     output.success("Updated .worktreerc.json");
-                    console.log(JSON.stringify(existing, null, 2));
+                    output.plain(JSON.stringify(existing, null, 2));
                     return;
                 }
 
                 // Interactive mode
                 if (configExists(root)) {
                     const current = loadConfig(root);
-                    console.log("Current config:");
-                    console.log(JSON.stringify(current, null, 2));
-                    console.log();
+                    output.info("Current config:");
+                    output.plain(JSON.stringify(current, null, 2));
+                    output.blank();
 
-                    const reconfigure = await confirm({ message: "Reconfigure?", default: true });
+                    const reconfigure = await confirm(
+                        { message: "Reconfigure?", default: true, theme: promptTheme },
+                        { output: process.stderr },
+                    );
                     if (!reconfigure) return;
                 }
 
@@ -66,12 +70,16 @@ export function registerConfig(program: Command): void {
 
                 // Offer to run post-create
                 if (config.postCreate && opts.install !== false) {
-                    const run = await confirm({
-                        message: `Run post-create command: ${config.postCreate}?`,
-                        default: true,
-                    });
+                    const run = await confirm(
+                        {
+                            message: `Run post-create command: ${config.postCreate}?`,
+                            default: true,
+                            theme: promptTheme,
+                        },
+                        { output: process.stderr },
+                    );
                     if (run) {
-                        console.log(`Running: ${config.postCreate}`);
+                        output.dim(`Running: ${config.postCreate}`);
                         execSync(config.postCreate, { cwd: process.cwd(), stdio: "inherit" });
                     }
                 }

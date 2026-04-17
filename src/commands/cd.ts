@@ -1,9 +1,10 @@
-import { select } from "@inquirer/prompts";
 import type { Command } from "commander";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
+import { pc, promptTheme } from "../lib/output.js";
+import { select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
 
 export function registerCd(program: Command): void {
@@ -20,7 +21,7 @@ export function registerCd(program: Command): void {
                     output.error(`Worktree not found: ${target}`);
                     process.exit(1);
                 }
-                // Print path to stdout for shell wrapper to capture
+                warnIfNoWrapper();
                 process.stdout.write(target);
                 return;
             }
@@ -34,18 +35,33 @@ export function registerCd(program: Command): void {
 
             // Render prompts to stderr so the shell wrapper's $(...)
             // only captures the final path on stdout
+            const maxLen = Math.max(...entries.map((e) => e.dirname.length));
             const selected = await select(
                 {
-                    message: "Select worktree:",
+                    message: "📂 Select worktree:",
                     choices: entries.map((e) => ({
                         value: e.path,
-                        name: `${e.dirname} → ${e.branch}`,
+                        name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
                     })),
+                    theme: promptTheme,
                 },
                 { output: process.stderr },
             );
 
-            // Print path to stdout for shell wrapper to capture
+            warnIfNoWrapper();
             process.stdout.write(selected);
         });
+}
+
+/**
+ * When stdout is a TTY, the shell wrapper isn't capturing output —
+ * the user called the binary directly instead of through the shell function.
+ */
+function warnIfNoWrapper(): void {
+    if (process.stdout.isTTY) {
+        output.blank();
+        output.warn("Shell wrapper not active — cd will not happen.");
+        output.dim("  Setup: wt init         (first time only)");
+        output.dim("  Then:  source ~/.zshrc  (or open a new terminal)");
+    }
 }

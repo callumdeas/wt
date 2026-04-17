@@ -5,7 +5,7 @@
     "version": "0.0.0",
     "description": "Git worktree manager for bare-repo workflows",
     "bin": {
-        "wt": "./dist/src/cli.js"
+        "wt": "./dist/cli.js"
     },
     "files": [
         "dist"
@@ -17,7 +17,8 @@
         "format": "prettier --write '**/*.{md,json,js,ts}'",
         "test": "jest",
         "ci:test": "jest --ci --coverage --reporters=default",
-        "build": "rm -rf dist/* && tsc"
+        "build": "rm -rf dist/* && tsc",
+        "link": "npm run build && npm link . && chmod +x dist/cli.js"
     },
     "engines": {
         "node": ">=22",
@@ -26,6 +27,7 @@
     "dependencies": {
         "@inquirer/prompts": "^7.0.0",
         "commander": "^13.0.0",
+        "ora": "^9.3.0",
         "picocolors": "^1.1.0",
         "update-notifier": "^7.3.1"
     },

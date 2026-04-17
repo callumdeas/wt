@@ -1,31 +1,48 @@
-import { select } from "@inquirer/prompts";
 import type { Command } from "commander";
 import { execSync } from "node:child_process";
-import { cpSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { prepareLogFile, spawnBackground } from "../lib/background.js";
 import { loadConfig } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
+import { pc, promptTheme } from "../lib/output.js";
+import { select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
 import { workspaceAdd } from "../lib/workspace.js";
 
 export function registerGet(program: Command): void {
     program
         .command("get")
-        .description("Check out an existing remote branch into a worktree")
+        .description("Check out an existing branch into a worktree and cd into it")
         .argument("<pattern>", "Branch name or pattern to search for")
-        .option("--first", "Auto-select first match when multiple branches found")
-        .option("--exact", "Require exact branch name match")
-        .action(async (pattern: string, opts: { first?: boolean; exact?: boolean }) => {
+        .option("--first", "Auto-select first match (skip interactive selection)")
+        .option("--exact", "Require exact branch name match (skip interactive selection)")
+        .option(
+            "--foreground",
+            "Run post-create in foreground (blocks until done; auto-enabled in non-interactive sessions)",
+        )
+        .addHelpText(
+            "after",
+            `\n${pc.bold("Scripting notes:")}\n` +
+                pc.dim(
+                    "  Use --exact or --first to avoid interactive branch selection.\n" +
+                        "  Outputs the worktree path to stdout for the shell wrapper.\n" +
+                        "  In scripts, use `command wt get <branch>` to capture the path directly.\n" +
+                        "  Without --foreground, post-create runs in background — the worktree may not\n" +
+                        "  be fully set up (e.g. node_modules) when the command returns.\n" +
+                        "  Non-interactive sessions (no TTY) auto-enable --foreground.",
+                ),
+        )
+        .action(async (pattern: string, opts: { first?: boolean; exact?: boolean; foreground?: boolean }) => {
             const root = requireRoot();
             const config = loadConfig(root);
-            const defBranch = git.defaultBranch(root);
 
             // Fetch latest
-            console.log("Fetching latest from origin...");
+            output.info("Fetching latest from origin...");
             git.fetch(root);
 
-            // Find matching remote branches
+            // Find matching branches — prefer remote, fall back to local-only
             const remoteBranches = git.branchListRemote(root);
             let matches: string[];
 
@@ -37,9 +54,22 @@ export function registerGet(program: Command): void {
             }
 
             if (matches.length === 0) {
-                output.error(`No remote branch found matching: ${pattern}`);
-                console.log("Available remote branches:");
-                remoteBranches.slice(0, 20).forEach((b) => console.log(`  ${b}`));
+                const localBranches = git.branchListLocal(root);
+                if (opts.exact) {
+                    matches = localBranches.filter((b) => b === pattern);
+                } else {
+                    const lowerPattern = pattern.toLowerCase();
+                    matches = localBranches.filter((b) => b.toLowerCase().includes(lowerPattern));
+                }
+                if (matches.length > 0) {
+                    output.dim("No remote branch found — matched local branch");
+                }
+            }
+
+            if (matches.length === 0) {
+                output.error(`No branch found matching: ${pattern}`);
+                output.dim("Available remote branches:");
+                remoteBranches.slice(0, 20).forEach((b) => output.dim(`  ${b}`));
                 process.exit(1);
             }
 
@@ -49,12 +79,16 @@ export function registerGet(program: Command): void {
                 branchName = matches[0];
             } else if (opts.first) {
                 branchName = matches[0];
-                console.log(`Multiple matches found, auto-selecting first: ${branchName}`);
+                output.info(`Multiple matches found, auto-selecting first: ${branchName}`);
             } else {
-                branchName = await select({
-                    message: "Multiple branches found:",
-                    choices: matches.map((b) => ({ value: b, name: b })),
-                });
+                branchName = await select(
+                    {
+                        message: "Multiple branches found:",
+                        choices: matches.map((b) => ({ value: b, name: pc.cyan(b) })),
+                        theme: promptTheme,
+                    },
+                    { output: process.stderr },
+                );
             }
 
             // Extract directory name — try ticket pattern first
@@ -70,12 +104,12 @@ export function registerGet(program: Command): void {
 
             if (existsSync(worktreeDir)) {
                 output.error(`Worktree already exists at ${worktreeDir}`);
-                console.log(`Use: wt cd ${dirName}`);
+                output.dim(`Use: wt cd ${dirName}`);
                 process.exit(1);
             }
 
             // Create worktree tracking the remote branch
-            console.log(`Creating worktree at ${worktreeDir} for branch ${branchName}...`);
+            output.info(`Creating worktree at ${worktreeDir} for branch ${branchName}...`);
 
             if (git.branchExists(root, branchName)) {
                 git.worktreeAdd(root, worktreeDir, branchName);
@@ -90,23 +124,45 @@ export function registerGet(program: Command): void {
             output.dim(`  Branch:    ${branchName}`);
             output.dim(`  Directory: ${worktreeDir}`);
 
-            // Copy .claude folder
-            const defaultWorktree = join(root, defBranch);
-            const claudeDir = join(defaultWorktree, ".claude");
-            if (existsSync(claudeDir)) {
-                cpSync(claudeDir, join(worktreeDir, ".claude"), { recursive: true });
-                output.dim(`  Copied:    .claude from ${defBranch}`);
+            // Add to workspace (synchronous — must complete before exit)
+            if (config.workspaceMode) {
+                workspaceAdd(root, worktreeDir);
             }
 
             // Run post-create
             if (config.postCreate) {
-                console.log(`Running post-create: ${config.postCreate}`);
-                execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
+                const runForeground = opts.foreground || !process.stdin.isTTY;
+                if (runForeground) {
+                    output.info("Running post-create...");
+                    output.dim(`  Command: ${config.postCreate}`);
+                    execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
+                    output.success("Post-create complete");
+                } else {
+                    const logFile = prepareLogFile(root, dirName);
+                    try {
+                        spawnBackground({
+                            cmd: config.postCreate,
+                            cwd: worktreeDir,
+                            logFile,
+                            notifyTitle: "wt",
+                            notifyMessage: `Setup complete for ${branchName}`,
+                        });
+                        output.info("Running post-create in background — you can start working now");
+                        output.dim(`  Command: ${config.postCreate}`);
+                        output.dim(`  Log:     ${logFile}`);
+                        output.dim("  Run wt setup to re-run manually if needed");
+                    } catch {
+                        output.warn("Could not start background setup — run wt setup manually");
+                    }
+                }
             }
 
-            // Add to workspace
-            if (config.workspaceMode) {
-                workspaceAdd(root, worktreeDir);
+            // Output path for shell wrapper to cd into
+            process.stdout.write(worktreeDir);
+
+            // If stdout is a TTY, the shell wrapper isn't capturing — hint the user
+            if (process.stdout.isTTY) {
+                output.dim(`\nRun wt init and source your shell config to auto-cd into worktrees`);
             }
         });
 }

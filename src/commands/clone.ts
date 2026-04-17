@@ -39,7 +39,7 @@ export function registerClone(program: Command): void {
                     process.exit(1);
                 }
 
-                console.log(`Creating bare worktree structure in ${dir}...`);
+                output.info(`Creating bare worktree structure in ${dir}...`);
 
                 // Create directory and clone bare
                 mkdirSync(absDir, { recursive: true });
@@ -55,7 +55,7 @@ export function registerClone(program: Command): void {
                 git.configSet(`${absDir}/.bare`, "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*");
 
                 // Fetch to populate remote refs
-                console.log("Fetching remote refs...");
+                output.info("Fetching remote refs...");
                 git.fetch(absDir);
 
                 // Ensure origin/HEAD is set so defaultBranch can detect non-standard defaults
@@ -63,11 +63,11 @@ export function registerClone(program: Command): void {
 
                 // Detect default branch
                 const defBranch = git.defaultBranch(absDir);
-                console.log(`Default branch detected: ${defBranch}`);
+                output.info(`Default branch detected: ${defBranch}`);
 
                 // Create worktree for default branch
                 const worktreeDir = `${absDir}/${defBranch}`;
-                console.log(`Creating worktree at ${worktreeDir}...`);
+                output.info(`Creating worktree at ${worktreeDir}...`);
 
                 try {
                     git.worktreeAdd(absDir, worktreeDir, defBranch);
@@ -76,12 +76,12 @@ export function registerClone(program: Command): void {
                     git.worktreeAdd(absDir, worktreeDir, defBranch, { track: `origin/${defBranch}` });
                 }
 
-                console.log();
+                output.blank();
                 output.success("Repository cloned");
                 output.dim(`  Root:     ${absDir}`);
                 output.dim(`  Bare:     ${absDir}/.bare`);
                 output.dim(`  Worktree: ${worktreeDir}`);
-                console.log();
+                output.blank();
 
                 await postSetupFlow(absDir, worktreeDir, opts);
             },

@@ -153,7 +153,9 @@ export function registerRm(program: Command): void {
                     root = requireRoot();
                 }
 
-                const worktreeDir = join(root, name);
+                // Resolve the actual path from git's list — worktrees may live at
+                // non-standard locations (e.g. .claude/worktrees/x) rather than root/x
+                const worktreeDir = git.worktreeList(root).find((e) => e.dirname === name)?.path ?? join(root, name);
                 const defBranch = git.defaultBranch(root);
 
                 if (name === defBranch) {

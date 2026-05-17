@@ -50,7 +50,8 @@ git log origin/main..HEAD --oneline
 Auto-generate a first draft from commits since the previous tag:
 
 ```bash
-# get the previous tag
+# fetch tags first — local clone may not have them yet
+git fetch --tags
 PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
 git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges
 ```

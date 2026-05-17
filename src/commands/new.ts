@@ -8,7 +8,6 @@ import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { pc } from "../lib/output.js";
 import { requireRoot } from "../lib/root.js";
-import { workspaceAdd } from "../lib/workspace.js";
 
 /**
  * Resolve the start-point ref for a new worktree branch.
@@ -81,11 +80,6 @@ export function registerNew(program: Command): void {
             output.dim(`  Base:      ${startPoint}`);
             output.dim(`  Directory: ${worktreeDir}`);
 
-            // Add to workspace if enabled (synchronous — must complete before exit)
-            if (config.workspaceMode) {
-                workspaceAdd(root, worktreeDir);
-            }
-
             // Post-create and push ordering:
             // git push triggers pre-push hooks (e.g. husky) that may need
             // dependencies installed by postCreate, so push runs after it.
@@ -115,7 +109,6 @@ export function registerNew(program: Command): void {
                         output.info("Running post-create + push in background — you can start working now");
                         output.dim(`  Command: ${config.postCreate}`);
                         output.dim(`  Log:     ${logFile}`);
-                        output.dim("  Run wt setup to re-run manually if needed");
                     } catch {
                         output.warn("Could not start background setup — run wt setup manually");
                     }

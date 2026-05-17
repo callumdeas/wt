@@ -1,10 +1,8 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { loadConfig } from "./config.js";
 import * as git from "./git.js";
 import * as output from "./output.js";
-import { workspaceRemove } from "./workspace.js";
 
 export const HEAVY_DIRS = [
     "node_modules",
@@ -59,7 +57,6 @@ export async function removeWorktree(
     }
 
     const branchName = git.currentBranch(worktreePath);
-    const config = loadConfig(root);
 
     // Pre-delete heavy dirs to speed up `git worktree remove`. If we touch any,
     // we implicitly force-remove (the working tree is already dirty by our doing).
@@ -78,10 +75,6 @@ export async function removeWorktree(
     } catch (err) {
         if (opts.force) throw err;
         throw new DirtyWorktreeError(worktreePath, err);
-    }
-
-    if (config.workspaceMode) {
-        workspaceRemove(root, worktreePath);
     }
 
     let branchDeleted = false;

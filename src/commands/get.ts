@@ -9,7 +9,6 @@ import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
-import { workspaceAdd } from "../lib/workspace.js";
 
 export function registerGet(program: Command): void {
     program
@@ -124,11 +123,6 @@ export function registerGet(program: Command): void {
             output.dim(`  Branch:    ${branchName}`);
             output.dim(`  Directory: ${worktreeDir}`);
 
-            // Add to workspace (synchronous — must complete before exit)
-            if (config.workspaceMode) {
-                workspaceAdd(root, worktreeDir);
-            }
-
             // Run post-create
             if (config.postCreate) {
                 const runForeground = opts.foreground || !process.stdin.isTTY;
@@ -150,7 +144,6 @@ export function registerGet(program: Command): void {
                         output.info("Running post-create in background — you can start working now");
                         output.dim(`  Command: ${config.postCreate}`);
                         output.dim(`  Log:     ${logFile}`);
-                        output.dim("  Run wt setup to re-run manually if needed");
                     } catch {
                         output.warn("Could not start background setup — run wt setup manually");
                     }

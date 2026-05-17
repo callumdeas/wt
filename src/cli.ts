@@ -7,19 +7,13 @@ import { fileURLToPath } from "url";
 import { registerCd } from "./commands/cd.js";
 import { registerClean } from "./commands/clean.js";
 import { registerClone } from "./commands/clone.js";
-import { registerConfig } from "./commands/config.js";
 import { registerConvert } from "./commands/convert.js";
 import { registerGet } from "./commands/get.js";
 import { registerInit } from "./commands/init.js";
 import { registerLs } from "./commands/ls.js";
 import { registerNew } from "./commands/new.js";
-import { registerOpen } from "./commands/open.js";
 import { registerRepos } from "./commands/repos.js";
 import { registerRm } from "./commands/rm.js";
-import { registerSetup } from "./commands/setup.js";
-import { registerStart } from "./commands/start.js";
-import { registerUpdate } from "./commands/update.js";
-import { registerWorkspace } from "./commands/workspace.js";
 import { printBanner } from "./lib/banner.js";
 import * as output from "./lib/output.js";
 import { pc } from "./lib/output.js";
@@ -53,14 +47,8 @@ registerLs(program);
 registerCd(program);
 registerInit(program);
 registerRm(program);
-registerSetup(program);
-registerUpdate(program);
-registerOpen(program);
-registerConfig(program);
-registerWorkspace(program);
 registerRepos(program);
 registerClean(program);
-registerStart(program);
 
 // Show the banner when running bare `wt` with no subcommand
 if (process.argv.length <= 2) {

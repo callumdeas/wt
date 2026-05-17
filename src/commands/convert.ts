@@ -1,13 +1,12 @@
 import type { Command } from "commander";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { loadConfig, postSetupFlow } from "../lib/config.js";
+import { postSetupFlow } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { checkbox, confirm } from "../lib/prompt.js";
 import { registerRepo } from "../lib/registry.js";
-import { workspaceAdd } from "../lib/workspace.js";
 
 const STAGING_DIR = "._wt_tmp";
 const SKIP_ENTRIES = new Set([".bare", STAGING_DIR]);
@@ -66,7 +65,6 @@ async function portBranches(
 
     if (selected.length === 0) return;
 
-    const config = loadConfig(root);
     output.blank();
 
     for (const branch of selected) {
@@ -83,9 +81,6 @@ async function portBranches(
             if (git.remoteBranchExists(root, branch)) {
                 git.setUpstream(worktreePath, branch);
             }
-            if (config.workspaceMode) {
-                workspaceAdd(root, worktreePath);
-            }
             output.success(`  Ported ${branch} → ${dirName}`);
         } catch {
             output.warn(`  Failed to port ${branch} — skipping`);
@@ -100,8 +95,6 @@ export function registerConvert(program: Command): void {
         .option("--no-config", "Skip .worktreerc.json creation")
         .option("--post-create <cmd>", "Set post-create command")
         .option("--editor <cmd>", "Set editor command (code, cursor, vim, nvim, zed)")
-        .option("--workspace-mode", "Enable workspace mode")
-        .option("--no-workspace-mode", "Disable workspace mode")
         .option("--install", "Run post-create after conversion")
         .option("--no-install", "Skip post-create after conversion")
         .option("-y, --yes", "Skip confirmation prompt (use in CI/scripts)")
@@ -110,7 +103,7 @@ export function registerConvert(program: Command): void {
         .addHelpText(
             "after",
             `\n${pc.bold("Fully non-interactive example:")}\n` +
-                pc.dim("  wt convert --yes --post-create 'npm ci' --no-workspace-mode --install --no-port-branches") +
+                pc.dim("  wt convert --yes --post-create 'npm ci' --install --no-port-branches") +
                 `\n\n${pc.bold("Port specific branches (agent-friendly):")}\n` +
                 pc.dim("  wt convert --yes --port feat/auth feat/payments --post-create 'npm ci'"),
         )
@@ -119,7 +112,6 @@ export function registerConvert(program: Command): void {
                 config?: boolean;
                 postCreate?: string;
                 editor?: string;
-                workspaceMode?: boolean;
                 install?: boolean;
                 yes?: boolean;
                 port?: string[];

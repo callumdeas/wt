@@ -16,8 +16,6 @@ export function registerClone(program: Command): void {
         .option("--no-config", "Skip .worktreerc.json creation")
         .option("--post-create <cmd>", "Set post-create command")
         .option("--editor <cmd>", "Set editor command (code, cursor, vim, nvim, zed)")
-        .option("--workspace-mode", "Enable workspace mode")
-        .option("--no-workspace-mode", "Disable workspace mode")
         .option("--install", "Run post-create after clone")
         .option("--no-install", "Skip post-create after clone")
         .action(
@@ -28,7 +26,6 @@ export function registerClone(program: Command): void {
                     config?: boolean;
                     postCreate?: string;
                     editor?: string;
-                    workspaceMode?: boolean;
                     install?: boolean;
                 },
             ) => {

@@ -1,12 +1,16 @@
 import type { Command } from "commander";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import ora from "ora";
+import type { CrossRepoSelectConfig } from "../lib/cross-repo-select.js";
+import { crossRepoSelect } from "../lib/cross-repo-select.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { confirm, select } from "../lib/prompt.js";
-import { requireRoot } from "../lib/root.js";
+import type { RegistryEntry } from "../lib/registry.js";
+import { findRepo, listRepos } from "../lib/registry.js";
+import { findRoot, requireRoot } from "../lib/root.js";
 import { DirtyWorktreeError, removeWorktree } from "../lib/worktree-remove.js";
 
 export function registerRm(program: Command): void {
@@ -15,45 +19,148 @@ export function registerRm(program: Command): void {
         .alias("remove")
         .description("Remove a worktree")
         .argument("[name]", "Worktree directory name (interactive picker if omitted)")
+        .option("--repo <name>", "Remove from a specific registered repo")
         .option("--force", "Force remove even with uncommitted changes (skip confirmation)")
         .option("--delete-branch", "Delete the branch after removing (skip confirmation)")
         .option("--keep-branch", "Keep the branch (skip confirmation)")
         .addHelpText(
             "after",
-            `\n${pc.bold("Fully non-interactive example:")}\n` + pc.dim("  wt rm my-feature --force --delete-branch"),
+            `\n${pc.bold("Fully non-interactive examples:")}\n` +
+                pc.dim(
+                    "  wt rm my-feature --force --delete-branch\n  wt rm my-feature --repo web --force --delete-branch",
+                ),
         )
         .action(
             async (
                 name: string | undefined,
-                opts: { force?: boolean; deleteBranch?: boolean; keepBranch?: boolean },
+                opts: { repo?: string; force?: boolean; deleteBranch?: boolean; keepBranch?: boolean },
             ) => {
-                const root = requireRoot();
-                const defBranch = git.defaultBranch(root);
+                let root: string;
 
-                // If no name, show interactive selection
-                if (!name) {
-                    const entries = git.worktreeList(root).filter((e) => e.dirname !== defBranch);
-                    if (entries.length === 0) {
-                        output.info("No removable worktrees found (only default branch exists)");
+                if (opts.repo) {
+                    // --repo specified: resolve from registry
+                    const entry = findRepo(opts.repo);
+                    if (!entry) {
+                        output.error(`Unknown repo: ${opts.repo}`);
+                        process.exit(1);
+                    }
+                    root = entry.path;
+
+                    if (!name) {
+                        const defBr = git.defaultBranch(root);
+                        const entries = git.worktreeList(root);
+                        const removable = entries.filter((e) => e.dirname !== defBr);
+                        if (removable.length === 0) {
+                            output.info(`No removable worktrees found in: ${entry.name}`);
+                            process.exit(1);
+                        }
+                        const maxLen = Math.max(...entries.map((e) => e.dirname.length));
+                        name = await select(
+                            {
+                                message: "🧹 Delete worktree:",
+                                choices: entries.map((e) => ({
+                                    value: e.dirname,
+                                    name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
+                                    disabled: e.dirname === defBr ? "🔒 default branch" : false,
+                                })),
+                                theme: promptTheme,
+                            },
+                            { output: process.stderr },
+                        );
+                    }
+                } else if (!name) {
+                    // No --repo, no name: cross-repo interactive picker
+                    const currentRoot = findRoot();
+                    const repos = listRepos();
+                    const effectiveRepos: RegistryEntry[] =
+                        repos.length > 0
+                            ? repos
+                            : currentRoot
+                              ? [{ path: currentRoot, name: basename(currentRoot), addedAt: "" }]
+                              : [];
+
+                    if (effectiveRepos.length === 0) {
+                        output.error("Not in a worktree-managed repository (no .bare found)");
+                        output.dim("  Register repos with: wt repos add [path]");
                         process.exit(1);
                     }
 
-                    const maxLen = Math.max(...entries.map((e) => e.dirname.length));
-                    const selected = await select(
-                        {
-                            message: "🧹 Select worktree to remove:",
-                            choices: entries.map((e) => ({
-                                value: e.dirname,
-                                name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
-                            })),
-                            theme: promptTheme,
-                        },
-                        { output: process.stderr },
+                    // Build worktree lists; default branch is shown greyed out but not selectable
+                    const worktreesByRepo = effectiveRepos.map((repo) => {
+                        const defBr = git.defaultBranch(repo.path);
+                        const entries = git.worktreeList(repo.path);
+                        const maxLen = Math.max(...entries.map((e) => e.dirname.length), 0);
+                        return entries.map((e) => ({
+                            value: e.path,
+                            name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
+                            disabled: e.dirname === defBr,
+                        }));
+                    });
+
+                    // Only show repos that have at least one removable (non-default) worktree
+                    const removableRepos = effectiveRepos.filter((_, i) =>
+                        (worktreesByRepo[i] ?? []).some((w) => !w.disabled),
                     );
-                    name = selected;
+                    const removableByRepo = worktreesByRepo.filter((wts) => wts.some((w) => !w.disabled));
+
+                    if (removableRepos.length === 0) {
+                        output.info("No removable worktrees found (only default branches exist)");
+                        process.exit(1);
+                    }
+
+                    const initialRepoIdx = currentRoot
+                        ? Math.max(
+                              0,
+                              removableRepos.findIndex((r) => r.path === currentRoot),
+                          )
+                        : 0;
+
+                    const filterModeRef = { current: false };
+                    const promptConfig: CrossRepoSelectConfig = {
+                        repos: removableRepos,
+                        worktreesByRepo: removableByRepo,
+                        initialRepoIdx,
+                        message: "🧹 Delete worktree:",
+                        actionLabel: "delete",
+                        filterModeRef,
+                    };
+
+                    const controller = new AbortController();
+                    const onEscape = (_ch: string, key: { name: string }) => {
+                        if (key?.name === "escape" && !filterModeRef.current) controller.abort();
+                    };
+                    process.stdin.on("keypress", onEscape);
+
+                    let selected: string;
+                    try {
+                        selected = await crossRepoSelect(promptConfig, {
+                            output: process.stderr,
+                            signal: controller.signal,
+                        });
+                    } finally {
+                        process.stdin.removeListener("keypress", onEscape);
+                    }
+
+                    const matchedRepo = removableRepos.find((r) => selected.startsWith(r.path + "/"));
+                    if (!matchedRepo) {
+                        output.error("Could not determine repo root from selection");
+                        process.exit(1);
+                    }
+                    root = matchedRepo.path;
+                    name = basename(selected);
+                } else {
+                    // No --repo, name provided: use current repo
+                    root = requireRoot();
                 }
 
                 const worktreeDir = join(root, name);
+                const defBranch = git.defaultBranch(root);
+
+                if (name === defBranch) {
+                    output.error(`Cannot remove the default branch worktree: ${pc.cyan(name)}`);
+                    output.dim("  The default branch is protected. Use git directly if you really need this.");
+                    process.exit(1);
+                }
 
                 if (!existsSync(worktreeDir)) {
                     output.error(`Worktree not found: ${worktreeDir}`);

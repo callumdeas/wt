@@ -90,16 +90,20 @@ Scripting notes:
                 process.exit(1);
             }
 
+            const filterModeRef = { current: false };
             const promptConfig: CrossRepoSelectConfig = {
                 repos: effectiveRepos,
                 worktreesByRepo,
                 initialRepoIdx: activeIdx,
+                filterModeRef,
             };
 
-            // Escape cancellation — mirror the pattern from prompt.ts withEscape
+            // Escape cancellation — mirror the pattern from prompt.ts withEscape.
+            // While the prompt is in filter-edit mode, escape is consumed by the
+            // prompt to clear the filter rather than aborting the whole command.
             const controller = new AbortController();
             const onEscape = (_ch: string, key: { name: string }) => {
-                if (key?.name === "escape") controller.abort();
+                if (key?.name === "escape" && !filterModeRef.current) controller.abort();
             };
             process.stdin.on("keypress", onEscape);
 

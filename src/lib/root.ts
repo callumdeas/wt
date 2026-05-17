@@ -2,11 +2,27 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /**
+ * Best-effort `process.cwd()` that returns null when the working directory
+ * no longer exists (e.g. the user removed the worktree they were sitting in).
+ * Without this guard, libuv throws ENOENT (uv_cwd) and crashes the CLI.
+ */
+function safeCwd(): string | null {
+    try {
+        return process.cwd();
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Walk up from startDir looking for a .bare/ directory.
- * Returns the directory containing .bare, or null if not found.
+ * Returns the directory containing .bare, or null if not found
+ * (or if the current working directory has been deleted).
  */
 export function findRoot(startDir?: string): string | null {
-    let dir = resolve(startDir ?? process.cwd());
+    const start = startDir ?? safeCwd();
+    if (!start) return null;
+    let dir = resolve(start);
 
     while (true) {
         if (existsSync(join(dir, ".bare"))) {

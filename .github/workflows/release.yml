@@ -47,11 +47,19 @@ jobs:
                   VERSION="${GITHUB_REF_NAME#v}"
                   TARBALL_URL="https://registry.npmjs.org/doubleut/-/doubleut-${VERSION}.tgz"
 
-                  # Wait for the just-published tarball to propagate (npm can take ~60s)
-                  for i in $(seq 1 12); do
-                      if curl -fsLI "$TARBALL_URL" > /dev/null; then break; fi
-                      echo "Tarball not yet available; retry $i/12"
-                      sleep 10
+                  # Wait for the tarball to propagate with incremental backoff:
+                  # 5s → 10s → 20s → 40s → 60s → 60s … up to 10 minutes total
+                  delay=5
+                  elapsed=0
+                  while ! curl -fsLI "$TARBALL_URL" > /dev/null 2>&1; do
+                      if [ "$elapsed" -ge 600 ]; then
+                          echo "Tarball not available after 600s, giving up"
+                          exit 1
+                      fi
+                      echo "Tarball not yet available; waited ${elapsed}s, retrying in ${delay}s"
+                      sleep "$delay"
+                      elapsed=$((elapsed + delay))
+                      delay=$(( delay * 2 < 60 ? delay * 2 : 60 ))
                   done
 
                   curl -fsL "$TARBALL_URL" -o /tmp/wt.tgz

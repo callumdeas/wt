@@ -13,11 +13,19 @@ Follow these steps in order to publish a new version of the `doubleut` (`wt`) CL
 
 ## Step 1 — Determine the next version
 
+First, fetch tags and show the user what's in this release so they can make an informed decision on the version bump:
+
+```bash
+git fetch --tags
+PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges
+```
+
+Present those commits to the user, then show the version options:
+
 ```bash
 gh release list --limit 3
 ```
-
-Parse the latest tag (e.g. `v0.3.1`) and show the user these options:
 
 | Choice | Example result          |
 | ------ | ----------------------- |
@@ -50,8 +58,6 @@ git log origin/main..HEAD --oneline
 Auto-generate a first draft from commits since the previous tag:
 
 ```bash
-# fetch tags first — local clone may not have them yet
-git fetch --tags
 PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
 git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges
 ```

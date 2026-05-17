@@ -33,3 +33,44 @@ jobs:
             - run: npm publish --access public --provenance
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+            - name: Bump Homebrew formula
+              env:
+                  HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+              run: |
+                  set -euo pipefail
+                  if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+                      echo "HOMEBREW_TAP_TOKEN not set — skipping tap bump"
+                      exit 0
+                  fi
+
+                  VERSION="${GITHUB_REF_NAME#v}"
+                  TARBALL_URL="https://registry.npmjs.org/wtree/-/wtree-${VERSION}.tgz"
+
+                  # Wait briefly for the just-published tarball to propagate
+                  for i in 1 2 3 4 5; do
+                      if curl -fsLI "$TARBALL_URL" > /dev/null; then break; fi
+                      echo "Tarball not yet available; retry $i/5"
+                      sleep 5
+                  done
+
+                  curl -fsL "$TARBALL_URL" -o /tmp/wt.tgz
+                  SHA256=$(sha256sum /tmp/wt.tgz | cut -d' ' -f1)
+
+                  git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/CallumDeas/homebrew-wt.git" /tmp/tap
+                  cd /tmp/tap
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git config user.name "github-actions[bot]"
+
+                  sed -i.bak -E "s|url \"https://registry\.npmjs\.org/wtree/-/wtree-[^\"]+\"|url \"${TARBALL_URL}\"|" Formula/wt.rb
+                  sed -i.bak -E "s|sha256 \"[a-f0-9]{64}\"|sha256 \"${SHA256}\"|" Formula/wt.rb
+                  rm Formula/wt.rb.bak
+
+                  if git diff --quiet Formula/wt.rb; then
+                      echo "Formula already at ${VERSION}; nothing to commit"
+                      exit 0
+                  fi
+
+                  git add Formula/wt.rb
+                  git commit -m "wt ${VERSION}"
+                  git push origin main

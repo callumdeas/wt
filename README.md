@@ -23,7 +23,7 @@ brew install wt
 Or via npm:
 
 ```shell
-npm install -g wtree
+npm install -g doubleut
 ```
 
 ## Setup
@@ -42,7 +42,7 @@ This appends a small wrapper function to `~/.zshrc` (idempotent — safe to run 
 ```shell
 brew upgrade wt        # if installed via Homebrew
 # or
-npm install -g wtree   # if installed via npm
+npm install -g doubleut   # if installed via npm
 
 wt init --force
 source ~/.zshrc

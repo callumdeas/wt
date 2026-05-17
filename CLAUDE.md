@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`wtree` — a TypeScript CLI (binary: `wt`) for managing git worktrees in a bare-repo workflow. Built with Commander.js, published as an ESM-only Node.js package (>=22).
+`doubleut` — a TypeScript CLI (binary: `wt`) for managing git worktrees in a bare-repo workflow. Built with Commander.js, published as an ESM-only Node.js package (>=22).
 
 ## Commands
 

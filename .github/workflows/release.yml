@@ -45,7 +45,7 @@ jobs:
                   fi
 
                   VERSION="${GITHUB_REF_NAME#v}"
-                  TARBALL_URL="https://registry.npmjs.org/wtree/-/wtree-${VERSION}.tgz"
+                  TARBALL_URL="https://registry.npmjs.org/doubleut/-/doubleut-${VERSION}.tgz"
 
                   # Wait briefly for the just-published tarball to propagate
                   for i in 1 2 3 4 5; do
@@ -62,7 +62,7 @@ jobs:
                   git config user.email "github-actions[bot]@users.noreply.github.com"
                   git config user.name "github-actions[bot]"
 
-                  sed -i.bak -E "s|url \"https://registry\.npmjs\.org/wtree/-/wtree-[^\"]+\"|url \"${TARBALL_URL}\"|" Formula/wt.rb
+                  sed -i.bak -E "s|url \"https://registry\.npmjs\.org/doubleut/-/doubleut-[^\"]+\"|url \"${TARBALL_URL}\"|" Formula/wt.rb
                   sed -i.bak -E "s|sha256 \"[a-f0-9]{64}\"|sha256 \"${SHA256}\"|" Formula/wt.rb
                   rm Formula/wt.rb.bak
 

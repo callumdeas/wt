@@ -21,7 +21,8 @@
         "url": "https://github.com/callumdeas/wt/issues"
     },
     "bin": {
-        "wt": "./dist/cli.js"
+        "wt": "./dist/cli.js",
+        "doubleut": "./dist/cli.js"
     },
     "files": [
         "dist"

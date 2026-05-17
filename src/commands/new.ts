@@ -8,6 +8,7 @@ import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { pc } from "../lib/output.js";
 import { requireRoot } from "../lib/root.js";
+import { collectUntrackedFiles, copyUntrackedFiles } from "../lib/untracked.js";
 
 /**
  * Resolve the start-point ref for a new worktree branch.
@@ -40,6 +41,13 @@ export function registerNew(program: Command): void {
                         "  Without --foreground, post-create and push run in background — the worktree\n" +
                         "  may not be fully set up (e.g. node_modules) when the command returns.\n" +
                         "  Non-interactive sessions (no TTY) auto-enable --foreground.",
+                ) +
+                `\n\n${pc.bold("Untracked files:")}\n` +
+                pc.dim(
+                    "  Gitignored and untracked files (e.g. .env, .env.local) are automatically\n" +
+                        "  copied from the default branch worktree into the new worktree, so post-create\n" +
+                        "  hooks have them available. Generated dirs (node_modules, dist, .next, etc.)\n" +
+                        "  are excluded.",
                 ),
         )
         .action((branch: string, base: string | undefined, opts: { foreground?: boolean }) => {
@@ -79,6 +87,17 @@ export function registerNew(program: Command): void {
             output.dim(`  Branch:    ${branch}`);
             output.dim(`  Base:      ${startPoint}`);
             output.dim(`  Directory: ${worktreeDir}`);
+
+            // Copy untracked files (e.g. .env) from the default branch worktree before post-create
+            const defWorktreeDir = join(root, defBranch);
+            if (existsSync(defWorktreeDir)) {
+                const files = collectUntrackedFiles(defWorktreeDir);
+                const copied = copyUntrackedFiles(defWorktreeDir, worktreeDir, files);
+                if (copied.length > 0) {
+                    output.success(`Copied ${copied.length} untracked file(s) from ${defBranch}/`);
+                    for (const f of copied) output.dim(`  ${f}`);
+                }
+            }
 
             // Post-create and push ordering:
             // git push triggers pre-push hooks (e.g. husky) that may need

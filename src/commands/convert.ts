@@ -7,6 +7,7 @@ import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { checkbox, confirm } from "../lib/prompt.js";
 import { registerRepo } from "../lib/registry.js";
+import { collectUntrackedFiles, copyUntrackedFiles } from "../lib/untracked.js";
 
 const STAGING_DIR = "._wt_tmp";
 const SKIP_ENTRIES = new Set([".bare", STAGING_DIR]);
@@ -141,6 +142,8 @@ export function registerConvert(program: Command): void {
                 output.warn("This will restructure the repository into a bare worktree layout.");
                 output.warn("The default branch worktree is created automatically.");
                 output.warn("You'll be prompted to port other local branches as worktrees.");
+                output.warn("Untracked files (e.g. .env) will be copied into the default worktree.");
+                output.warn("Generated dirs (node_modules, dist, .next, etc.) are excluded.");
                 output.blank();
 
                 if (!opts.yes) {
@@ -161,6 +164,9 @@ export function registerConvert(program: Command): void {
                 // --- Structural conversion (.git → .bare, worktree creation) ---
                 // Only this block triggers rollback on failure. Config and post-create
                 // are handled separately since the conversion is already complete.
+                // Collect before .git is renamed so git still works normally
+                const untrackedFiles = collectUntrackedFiles(root);
+
                 let worktreeDir: string;
                 let defBranch: string;
                 let filesStaged = false;
@@ -201,6 +207,15 @@ export function registerConvert(program: Command): void {
 
                     // Prune any stale worktree registrations inherited from .git/worktrees/
                     git.worktreePrune(root, { now: true });
+
+                    // --- Rescue untracked files into the new worktree ---
+                    if (untrackedFiles.length > 0) {
+                        const copied = copyUntrackedFiles(stagingDir, worktreeDir, untrackedFiles);
+                        if (copied.length > 0) {
+                            output.success(`Preserved ${copied.length} untracked file(s) → ${defBranch}/`);
+                            for (const f of copied) output.dim(`  ${f}`);
+                        }
+                    }
 
                     // --- Clean up staging ---
                     rmSync(stagingDir, { recursive: true, force: true });

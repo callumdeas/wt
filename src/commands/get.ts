@@ -9,6 +9,7 @@ import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
+import { collectUntrackedFiles, copyUntrackedFiles } from "../lib/untracked.js";
 
 export function registerGet(program: Command): void {
     program
@@ -31,6 +32,13 @@ export function registerGet(program: Command): void {
                         "  Without --foreground, post-create runs in background — the worktree may not\n" +
                         "  be fully set up (e.g. node_modules) when the command returns.\n" +
                         "  Non-interactive sessions (no TTY) auto-enable --foreground.",
+                ) +
+                `\n\n${pc.bold("Untracked files:")}\n` +
+                pc.dim(
+                    "  Gitignored and untracked files (e.g. .env, .env.local) are automatically\n" +
+                        "  copied from the default branch worktree into the new worktree, so post-create\n" +
+                        "  hooks have them available. Generated dirs (node_modules, dist, .next, etc.)\n" +
+                        "  are excluded.",
                 ),
         )
         .action(async (pattern: string, opts: { first?: boolean; exact?: boolean; foreground?: boolean }) => {
@@ -122,6 +130,18 @@ export function registerGet(program: Command): void {
             output.success("Worktree created");
             output.dim(`  Branch:    ${branchName}`);
             output.dim(`  Directory: ${worktreeDir}`);
+
+            // Copy untracked files (e.g. .env) from the default branch worktree before post-create
+            const defBranch = git.defaultBranch(root);
+            const defWorktreeDir = join(root, defBranch);
+            if (existsSync(defWorktreeDir)) {
+                const files = collectUntrackedFiles(defWorktreeDir);
+                const copied = copyUntrackedFiles(defWorktreeDir, worktreeDir, files);
+                if (copied.length > 0) {
+                    output.success(`Copied ${copied.length} untracked file(s) from ${defBranch}/`);
+                    for (const f of copied) output.dim(`  ${f}`);
+                }
+            }
 
             // Run post-create
             if (config.postCreate) {

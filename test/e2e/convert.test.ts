@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createNormalRepo, makeTmpDir, runWt } from "./helpers.js";
+import { createNormalRepo, makeTmpDir, runGit, runWt } from "./helpers.js";
 
 /**
  * Convert tests — each test gets a fresh normal git repo.
@@ -53,7 +53,40 @@ describe("wt convert", () => {
         }
     });
 
-    // 4. Post-convert lifecycle — new, ls, rm all work after conversion
+    // 4. Untracked files (e.g. .env) are preserved into the new default worktree
+    it("preserves gitignored untracked files into the default worktree", () => {
+        // Add a .gitignore that ignores .env, then create a .env before conversion
+        writeFileSync(join(repoPath, ".gitignore"), ".env\n");
+        runGit(["add", ".gitignore"], repoPath);
+        runGit(["commit", "-m", "add gitignore"], repoPath);
+        runGit(["push"], repoPath);
+        writeFileSync(join(repoPath, ".env"), "SECRET=supersecret\n");
+
+        const result = runWt(["convert", "--yes", "--no-config"], { cwd: repoPath });
+        expect(result.status).toBe(0);
+
+        const preserved = join(repoPath, "main", ".env");
+        expect(existsSync(preserved)).toBe(true);
+        expect(readFileSync(preserved, "utf-8")).toBe("SECRET=supersecret\n");
+    });
+
+    it("preserves nested untracked files (monorepo .env) into the default worktree", () => {
+        writeFileSync(join(repoPath, ".gitignore"), "apps/**/.env.local\n");
+        runGit(["add", ".gitignore"], repoPath);
+        runGit(["commit", "-m", "add gitignore"], repoPath);
+        runGit(["push"], repoPath);
+        mkdirSync(join(repoPath, "apps", "web"), { recursive: true });
+        writeFileSync(join(repoPath, "apps", "web", ".env.local"), "NEXT_PUBLIC_URL=http://localhost\n");
+
+        const result = runWt(["convert", "--yes", "--no-config"], { cwd: repoPath });
+        expect(result.status).toBe(0);
+
+        const preserved = join(repoPath, "main", "apps", "web", ".env.local");
+        expect(existsSync(preserved)).toBe(true);
+        expect(readFileSync(preserved, "utf-8")).toBe("NEXT_PUBLIC_URL=http://localhost\n");
+    });
+
+    // 5. Post-convert lifecycle — new, ls, rm all work after conversion
     it("post-convert lifecycle: new + ls + rm work correctly", () => {
         // Convert
         const convertResult = runWt(["convert", "--yes", "--no-config"], { cwd: repoPath });

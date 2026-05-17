@@ -6,6 +6,7 @@ import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { checkbox, confirm } from "../lib/prompt.js";
+import { registerRepo } from "../lib/registry.js";
 import { workspaceAdd } from "../lib/workspace.js";
 
 const STAGING_DIR = "._wt_tmp";
@@ -259,6 +260,11 @@ export function registerConvert(program: Command): void {
                 output.dim(`  Bare:     ${bareDir}`);
                 output.dim(`  Worktree: ${worktreeDir}`);
                 output.blank();
+                try {
+                    registerRepo(root);
+                } catch {
+                    /* best-effort — never fail a convert */
+                }
 
                 // --- Branch porting ---
                 await portBranches(root, defBranch, opts);

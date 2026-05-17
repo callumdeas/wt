@@ -1,21 +1,69 @@
 import type { Command } from "commander";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import type { CrossRepoSelectConfig } from "../lib/cross-repo-select.js";
+import { crossRepoSelect } from "../lib/cross-repo-select.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc, promptTheme } from "../lib/output.js";
-import { select } from "../lib/prompt.js";
-import { requireRoot } from "../lib/root.js";
+import { pc } from "../lib/output.js";
+import type { RegistryEntry } from "../lib/registry.js";
+import { listRepos } from "../lib/registry.js";
+import { findRoot } from "../lib/root.js";
 
 export function registerCd(program: Command): void {
     program
         .command("cd")
         .description("Print the path to a worktree (use shell wrapper for actual cd)")
         .argument("[name]", "Worktree directory name (interactive if omitted)")
-        .action(async (name?: string) => {
-            const root = requireRoot();
+        .option("--repo <name>", "Select a specific registered repo by name or path")
+        .addHelpText(
+            "after",
+            `
+Scripting notes:
+  With --repo and [name], resolves entirely without prompts.
+  Without --repo, defaults to the current repo or the cross-repo picker.
+  Tab / Shift-Tab cycles through registered repos interactively.`,
+        )
+        .action(async (name: string | undefined, opts: { repo?: string }) => {
+            const currentRoot = findRoot();
+            const repos = listRepos();
 
+            // Determine starting repo index
+            let activeIdx = 0;
+            let adHocRoot: string | null = null; // current repo not yet in registry
+
+            if (opts.repo) {
+                const idx = findRepoIndex(repos, opts.repo);
+                if (idx === -1) {
+                    output.error(`Unknown repo: ${opts.repo}`);
+                    process.exit(1);
+                }
+                activeIdx = idx;
+            } else if (currentRoot) {
+                const idx = repos.findIndex((r) => r.path === currentRoot);
+                if (idx !== -1) {
+                    activeIdx = idx;
+                } else {
+                    adHocRoot = currentRoot;
+                }
+            } else if (repos.length === 0) {
+                output.error("Not in a worktree-managed repository (no .bare found)");
+                output.dim("  Register repos with: wt repos add [path]");
+                process.exit(1);
+            }
+
+            // Effective list: registered repos, or ad-hoc fallback for unregistered current repo
+            const effectiveRepos: RegistryEntry[] =
+                adHocRoot !== null ? [{ path: adHocRoot, name: basename(adHocRoot), addedAt: "" }] : repos;
+
+            if (effectiveRepos.length === 0) {
+                output.error("No repositories available. Register one with: wt repos add [path]");
+                process.exit(1);
+            }
+
+            // Direct name argument — resolve without prompt
             if (name) {
+                const root = effectiveRepos[activeIdx]!.path;
                 const target = join(root, name);
                 if (!existsSync(target)) {
                     output.error(`Worktree not found: ${target}`);
@@ -26,37 +74,53 @@ export function registerCd(program: Command): void {
                 return;
             }
 
-            // Interactive selection
-            const entries = git.worktreeList(root);
-            if (entries.length === 0) {
-                output.error("No worktrees found");
+            // Pre-load worktrees for all repos (fast — git worktree list is local)
+            const worktreesByRepo = effectiveRepos.map((repo) => {
+                const entries = git.worktreeList(repo.path);
+                const maxLen = Math.max(...entries.map((e) => e.dirname.length));
+                return entries.map((e) => ({
+                    value: e.path,
+                    name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
+                }));
+            });
+
+            const firstRepo = effectiveRepos[activeIdx]!;
+            if ((worktreesByRepo[activeIdx] ?? []).length === 0) {
+                output.error(`No worktrees found in: ${firstRepo.name}`);
                 process.exit(1);
             }
 
-            // Render prompts to stderr so the shell wrapper's $(...)
-            // only captures the final path on stdout
-            const maxLen = Math.max(...entries.map((e) => e.dirname.length));
-            const selected = await select(
-                {
-                    message: "📂 Select worktree:",
-                    choices: entries.map((e) => ({
-                        value: e.path,
-                        name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
-                    })),
-                    theme: promptTheme,
-                },
-                { output: process.stderr },
-            );
+            const promptConfig: CrossRepoSelectConfig = {
+                repos: effectiveRepos,
+                worktreesByRepo,
+                initialRepoIdx: activeIdx,
+            };
 
-            warnIfNoWrapper();
-            process.stdout.write(selected);
+            // Escape cancellation — mirror the pattern from prompt.ts withEscape
+            const controller = new AbortController();
+            const onEscape = (_ch: string, key: { name: string }) => {
+                if (key?.name === "escape") controller.abort();
+            };
+            process.stdin.on("keypress", onEscape);
+
+            try {
+                const selected = await crossRepoSelect(promptConfig, {
+                    output: process.stderr,
+                    signal: controller.signal,
+                });
+                warnIfNoWrapper();
+                process.stdout.write(selected);
+            } finally {
+                process.stdin.removeListener("keypress", onEscape);
+            }
         });
 }
 
-/**
- * When stdout is a TTY, the shell wrapper isn't capturing output —
- * the user called the binary directly instead of through the shell function.
- */
+function findRepoIndex(repos: RegistryEntry[], nameOrPath: string): number {
+    const isAbsPath = nameOrPath.startsWith("/");
+    return repos.findIndex((r) => r.name === nameOrPath || (isAbsPath && r.path === nameOrPath));
+}
+
 function warnIfNoWrapper(): void {
     if (process.stdout.isTTY) {
         output.blank();

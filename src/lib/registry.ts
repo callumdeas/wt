@@ -48,3 +48,8 @@ export function unregisterRepo(pathOrName: string): void {
 export function listRepos(): RegistryEntry[] {
     return loadRegistry().repos.filter((r) => existsSync(join(r.path, ".bare")));
 }
+
+export function findRepo(nameOrPath: string): RegistryEntry | undefined {
+    const isAbsPath = nameOrPath.startsWith("/");
+    return listRepos().find((r) => r.name === nameOrPath || (isAbsPath && r.path === nameOrPath));
+}

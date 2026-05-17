@@ -31,16 +31,20 @@ function writeWorkspace(filePath: string, workspace: WorkspaceFile): void {
 
 /**
  * Add a worktree folder to the workspace file (idempotent).
+ * Prunes entries for paths that no longer exist on disk as a side effect.
  */
 export function workspaceAdd(root: string, worktreePath: string): void {
     const filePath = workspaceFilePath(root);
     const workspace = readWorkspace(filePath);
-    const folderName = basename(worktreePath);
 
-    // Skip if already present
-    if (workspace.folders.some((f) => f.path === worktreePath)) return;
+    workspace.folders = workspace.folders.filter((f) => existsSync(f.path));
 
-    workspace.folders.push({ path: worktreePath, name: folderName });
+    if (workspace.folders.some((f) => f.path === worktreePath)) {
+        writeWorkspace(filePath, workspace);
+        return;
+    }
+
+    workspace.folders.push({ path: worktreePath, name: basename(worktreePath) });
     writeWorkspace(filePath, workspace);
 }
 

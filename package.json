@@ -14,11 +14,11 @@
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/CallumDeas/wt.git"
+        "url": "git+https://github.com/callumdeas/wt.git"
     },
-    "homepage": "https://github.com/CallumDeas/wt#readme",
+    "homepage": "https://github.com/callumdeas/wt#readme",
     "bugs": {
-        "url": "https://github.com/CallumDeas/wt/issues"
+        "url": "https://github.com/callumdeas/wt/issues"
     },
     "bin": {
         "wt": "./dist/cli.js"

@@ -66,7 +66,10 @@ export function registerConfig(program: Command): void {
                     if (!reconfigure) return;
                 }
 
-                const config = await interactiveConfig(root);
+                // Scan the user's current worktree for manifests so the
+                // post-create prompt can offer concrete suggestions instead
+                // of a blind free-form input.
+                const config = await interactiveConfig(root, process.cwd());
 
                 // Offer to run post-create
                 if (config.postCreate && opts.install !== false) {

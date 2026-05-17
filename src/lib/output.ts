@@ -36,6 +36,37 @@ export function blank(): void {
     console.error();
 }
 
+/**
+ * Print a section heading for grouped wizard prompts. Subtitle (one-line
+ * help text) is dimmed beneath the heading. Use this to break long
+ * sequential prompts into visually-distinct stages.
+ */
+export function section(title: string, subtitle?: string): void {
+    console.error();
+    console.error(pc.bold(pc.magenta(`▸ ${title}`)));
+    if (subtitle) console.error(pc.dim(`  ${subtitle}`));
+    console.error();
+}
+
+/**
+ * Render a key/value summary inside a light box. Used to confirm saved
+ * config at the end of the wizard so users see exactly what landed on disk.
+ */
+export function summaryBox(rows: { key: string; value: string }[]): void {
+    if (rows.length === 0) return;
+    const keyWidth = Math.max(...rows.map((r) => r.key.length));
+    const top = pc.dim("┌─");
+    const mid = pc.dim("│ ");
+    const bottom = pc.dim("└─");
+    console.error(top);
+    for (const row of rows) {
+        const k = pc.dim(row.key.padEnd(keyWidth));
+        const v = row.value === "" ? pc.dim("—") : pc.cyan(row.value);
+        console.error(`${mid}${k}  ${v}`);
+    }
+    console.error(bottom);
+}
+
 export { pc };
 
 /**

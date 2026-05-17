@@ -31,6 +31,20 @@ describe("findRoot", () => {
     it("finds root from the root itself", () => {
         expect(findRoot(TEST_DIR)).toBe(TEST_DIR);
     });
+
+    it("returns null without throwing when process.cwd() throws ENOENT (deleted cwd)", () => {
+        const originalCwd = process.cwd;
+        process.cwd = () => {
+            const err = new Error("ENOENT: no such file or directory, uv_cwd") as Error & { code: string };
+            err.code = "ENOENT";
+            throw err;
+        };
+        try {
+            expect(findRoot()).toBeNull();
+        } finally {
+            process.cwd = originalCwd;
+        }
+    });
 });
 
 describe("requireRoot", () => {

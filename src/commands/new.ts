@@ -68,6 +68,7 @@ export function registerNew(program: Command): void {
             output.info(`Creating worktree at ${worktreeDir} with branch ${branch}...`);
             git.worktreeAdd(root, worktreeDir, branch, {
                 newBranch: true,
+                noTrack: true,
                 track: startPoint,
             });
 

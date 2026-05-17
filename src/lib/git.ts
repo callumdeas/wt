@@ -30,13 +30,17 @@ export function worktreeAdd(
     root: string,
     worktreePath: string,
     branch: string,
-    opts?: { track?: string; newBranch?: boolean },
+    opts?: { track?: string; newBranch?: boolean; noTrack?: boolean },
 ): void {
     const bare = bareDir(root);
     if (opts?.newBranch) {
-        exec(`git -C "${bare}" worktree add -b "${branch}" "${worktreePath}" "${opts.track ?? `origin/${branch}`}"`, {
-            stdio: "inherit",
-        });
+        const trackFlag = opts.noTrack ? " --no-track" : "";
+        exec(
+            `git -C "${bare}" worktree add${trackFlag} -b "${branch}" "${worktreePath}" "${opts.track ?? `origin/${branch}`}"`,
+            {
+                stdio: "inherit",
+            },
+        );
     } else if (opts?.track) {
         exec(`git -C "${bare}" worktree add --track -b "${branch}" "${worktreePath}" "${opts.track}"`, {
             stdio: "inherit",

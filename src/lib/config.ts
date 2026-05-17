@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { detectSetup, type SetupSuggestion } from "./detect-setup.js";
 import * as output from "./output.js";
 import { pc, promptTheme } from "./output.js";
 import { confirm, input, select } from "./prompt.js";
@@ -130,27 +131,135 @@ export function configExists(root: string): boolean {
     return existsSync(configPath(root)) || existsSync(legacyConfigPath(root));
 }
 
+const CUSTOM_CHOICE = "__custom__";
+const SKIP_CHOICE = "__skip__";
+const CHAIN_CHOICE = "__chain__";
+
 /**
- * Interactive config wizard using @inquirer/prompts.
- * Returns the created config.
+ * Build the choice list for the post-create select.
+ *
+ * Layout: [existing config (if any)] + [chained "all" if multi-ecosystem]
+ *         + [each detected suggestion] + [custom…] + [skip].
+ *
+ * Inquirer's `description` field renders below the menu for the highlighted
+ * row, which lets us show context (e.g. "detected pnpm-lock.yaml") without
+ * cluttering the choice label.
  */
-export async function interactiveConfig(root: string): Promise<WtConfig> {
-    const existing = configExists(root) ? loadConfig(root) : DEFAULTS;
+function buildPostCreateChoices(suggestions: SetupSuggestion[], existing: string) {
+    const choices: Array<{ value: string; name: string; description?: string }> = [];
 
+    if (existing) {
+        choices.push({
+            value: existing,
+            name: `${pc.cyan(existing)} ${pc.dim("(current)")}`,
+            description: "Keep the value already in .worktreerc.json",
+        });
+    }
+
+    const ecosystems = new Set(suggestions.map((s) => s.ecosystem));
+    if (ecosystems.size > 1) {
+        const chained = suggestions.map((s) => s.command).join(" && ");
+        choices.push({
+            value: CHAIN_CHOICE,
+            name: `${pc.cyan("Run all detected setups")} ${pc.dim(`(${ecosystems.size} ecosystems)`)}`,
+            description: chained,
+        });
+    }
+
+    for (const s of suggestions) {
+        if (s.command === existing) continue; // already added at top
+        choices.push({
+            value: s.command,
+            name: `${pc.cyan(s.label)}`,
+            description: s.hint,
+        });
+    }
+
+    choices.push({
+        value: CUSTOM_CHOICE,
+        name: pc.dim("Custom command…"),
+        description: "Type your own command",
+    });
+    choices.push({
+        value: SKIP_CHOICE,
+        name: pc.dim("Skip (no post-create command)"),
+        description: "Worktrees won't run anything automatically",
+    });
+
+    return choices;
+}
+
+async function promptPostCreate(worktreeDir: string | undefined, existing: string): Promise<string> {
     const stderrCtx = { output: process.stderr };
+    const suggestions = worktreeDir ? detectSetup(worktreeDir) : [];
 
-    const postCreate = await input(
+    // Greenfield repo with nothing to detect and no existing value: keep the
+    // free-form input so users can type whatever they want.
+    if (suggestions.length === 0 && !existing) {
+        output.dim("  No package manifests detected — type a command or leave blank to skip.");
+        return await input(
+            {
+                message: "Post-create command:",
+                default: undefined,
+                theme: promptTheme,
+            },
+            stderrCtx,
+        );
+    }
+
+    if (suggestions.length > 0) {
+        output.dim(`  Detected ${suggestions.length} install path${suggestions.length === 1 ? "" : "s"} in this repo.`);
+    }
+
+    const choice = await select(
         {
-            message: "Post-create command (run after creating a worktree):",
-            default: existing.postCreate || undefined,
+            message: "Post-create command:",
+            choices: buildPostCreateChoices(suggestions, existing),
+            default: existing || suggestions[0]?.command,
             theme: promptTheme,
         },
         stderrCtx,
     );
 
+    if (choice === SKIP_CHOICE) return "";
+    if (choice === CHAIN_CHOICE) {
+        return suggestions.map((s) => s.command).join(" && ");
+    }
+    if (choice === CUSTOM_CHOICE) {
+        return await input(
+            {
+                message: "Custom post-create command:",
+                default: existing || undefined,
+                theme: promptTheme,
+            },
+            stderrCtx,
+        );
+    }
+    return choice;
+}
+
+/**
+ * Interactive config wizard using @inquirer/prompts.
+ *
+ * Sectioned layout (Setup → Editor → Dev server → Summary) replaces the
+ * old flat list of inputs. The post-create prompt auto-detects manifests
+ * in the worktree and offers them as ranked select choices.
+ *
+ * @param root         Bare-repo root (where .worktreerc.json is saved)
+ * @param worktreeDir  Path to a real worktree to scan for manifests.
+ *                     Optional — without it, post-create falls back to free-form input.
+ */
+export async function interactiveConfig(root: string, worktreeDir?: string): Promise<WtConfig> {
+    const existing = configExists(root) ? loadConfig(root) : DEFAULTS;
+    const stderrCtx = { output: process.stderr };
+
+    output.section("Setup", "What should run after a worktree is created (deps, codegen, etc.)");
+    const postCreate = await promptPostCreate(worktreeDir, existing.postCreate);
+
+    output.section("Editor", "How wt opens worktrees in your editor");
     const editor = await select(
         {
-            message: "Editor command:",
+            message: "Editor:",
             choices: [
                 { value: "code", name: `${pc.cyan("code")}   ${pc.dim("— VS Code")}` },
                 { value: "cursor", name: `${pc.cyan("cursor")} ${pc.dim("— Cursor")}` },
@@ -166,34 +275,58 @@ export async function interactiveConfig(root: string): Promise<WtConfig> {
 
     const workspaceMode = await confirm(
         {
-            message: "Enable workspace mode? (single editor window for all worktrees)",
+            message: "Workspace mode? (one editor window covering all worktrees)",
             default: existing.workspaceMode,
             theme: promptTheme,
         },
         stderrCtx,
     );
 
-    const preStart = await input(
+    output.section("Dev server", "Optional — shortcuts for `wt start`. Skip if you don't use it.");
+    const wantsDevServer = await confirm(
         {
-            message:
-                'Pre-start command (runs before dev server, e.g. "lsof -ti:8081 | xargs kill -9 2>/dev/null || true"):',
-            default: existing.preStart || undefined,
+            message: "Configure dev server commands?",
+            default: Boolean(existing.preStart || existing.startCmd),
             theme: promptTheme,
         },
         stderrCtx,
     );
 
-    const startCmd = await input(
-        {
-            message: 'Start command (dev server, e.g. "yarn dev"):',
-            default: existing.startCmd || undefined,
-            theme: promptTheme,
-        },
-        stderrCtx,
-    );
+    let preStart = existing.preStart;
+    let startCmd = existing.startCmd;
+    if (wantsDevServer) {
+        output.dim('  Pre-start runs before the dev server (e.g. free a port: "lsof -ti:8081 | xargs kill -9").');
+        preStart = await input(
+            {
+                message: "Pre-start command:",
+                default: existing.preStart || undefined,
+                theme: promptTheme,
+            },
+            stderrCtx,
+        );
+        output.dim('  Start runs the dev server itself (e.g. "yarn dev", "pnpm start").');
+        startCmd = await input(
+            {
+                message: "Start command:",
+                default: existing.startCmd || undefined,
+                theme: promptTheme,
+            },
+            stderrCtx,
+        );
+    }
 
     const config: WtConfig = { postCreate, editor, workspaceMode, preStart, startCmd };
     saveConfig(root, config);
+
+    output.blank();
+    output.success("Saved .worktreerc.json");
+    output.summaryBox([
+        { key: "post-create", value: postCreate },
+        { key: "editor", value: editor },
+        { key: "workspace", value: workspaceMode ? "enabled" : "disabled" },
+        { key: "pre-start", value: preStart },
+        { key: "start", value: startCmd },
+    ]);
 
     return config;
 }
@@ -225,7 +358,7 @@ export async function postSetupFlow(root: string, worktreeDir: string, opts: Pos
         saveConfig(root, config);
         output.success("Created .worktreerc.json");
     } else {
-        await interactiveConfig(root);
+        await interactiveConfig(root, worktreeDir);
     }
 
     // Run post-create if configured

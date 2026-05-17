@@ -199,6 +199,9 @@ export function registerConvert(program: Command): void {
                     }
                     worktreeCreated = true;
 
+                    // Prune any stale worktree registrations inherited from .git/worktrees/
+                    git.worktreePrune(root, { now: true });
+
                     // --- Clean up staging ---
                     rmSync(stagingDir, { recursive: true, force: true });
                 } catch (err) {

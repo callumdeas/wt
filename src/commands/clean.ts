@@ -225,7 +225,6 @@ async function pickCandidates(candidates: Candidate[]): Promise<Candidate[]> {
             choices,
             pageSize: Math.min(20, choices.length),
             theme: promptTheme,
-            instructions: " ",
         },
         { output: process.stderr },
     );

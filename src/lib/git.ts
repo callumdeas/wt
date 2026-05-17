@@ -55,8 +55,9 @@ export function worktreeRemove(root: string, worktreePath: string, force: boolea
     exec(`git -C "${bareDir(root)}" worktree remove${forceFlag} "${worktreePath}"`, { stdio: "inherit" });
 }
 
-export function worktreePrune(root: string): void {
-    exec(`git -C "${bareDir(root)}" worktree prune`);
+export function worktreePrune(root: string, opts?: { now?: boolean }): void {
+    const expireFlag = opts?.now ? " --expire now" : "";
+    exec(`git -C "${bareDir(root)}" worktree prune${expireFlag}`);
 }
 
 export interface WorktreeEntry {

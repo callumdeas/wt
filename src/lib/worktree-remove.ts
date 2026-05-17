@@ -52,8 +52,29 @@ export async function removeWorktree(
     opts: RemoveWorktreeOptions = {},
 ): Promise<RemoveWorktreeResult> {
     const worktreePath = join(root, name);
+
     if (!existsSync(worktreePath)) {
-        throw new Error(`Worktree not found: ${worktreePath}`);
+        // Directory is gone but git may still have the registration. Look up the
+        // branch from the worktree list, prune the stale entry, then optionally
+        // delete the branch — same outcome as a normal removal.
+        const entries = git.worktreeList(root);
+        const entry = entries.find((e) => e.path === worktreePath);
+        const branchName = entry?.branch ?? null;
+
+        git.worktreePrune(root, { now: true });
+
+        let branchDeleted = false;
+        if (opts.deleteBranch && branchName && branchName !== git.defaultBranch(root)) {
+            try {
+                git.branchDelete(root, branchName);
+                branchDeleted = true;
+            } catch (err) {
+                if (!opts.quiet) {
+                    output.warn(`Failed to delete branch '${branchName}': ${(err as Error).message}`);
+                }
+            }
+        }
+        return { branchDeleted, branchName };
     }
 
     const branchName = git.currentBranch(worktreePath);

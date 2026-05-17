@@ -4,6 +4,7 @@ import eslintPluginUnicorn from "eslint-plugin-unicorn";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
+    { ignores: ["dist/**", "node_modules/**", "reports/**"] },
     eslint.configs.recommended,
     tseslint.configs.eslintRecommended,
     ...tseslint.configs.recommended,

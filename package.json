@@ -1,9 +1,25 @@
 {
-    "name": "@fanduel/wt",
-    "author": "wizards-engineers",
+    "name": "wtree",
+    "author": "Callum Deas",
+    "license": "MIT",
     "type": "module",
     "version": "0.0.0",
     "description": "Git worktree manager for bare-repo workflows",
+    "keywords": [
+        "git",
+        "worktree",
+        "cli",
+        "bare-repo",
+        "developer-tools"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/CallumDeas/wt.git"
+    },
+    "homepage": "https://github.com/CallumDeas/wt#readme",
+    "bugs": {
+        "url": "https://github.com/CallumDeas/wt/issues"
+    },
     "bin": {
         "wt": "./dist/cli.js"
     },

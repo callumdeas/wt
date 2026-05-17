@@ -1,8 +1,4 @@
-| Pipeline                                        | Status                                                                                                                                        |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| [build](https://buildkite.com/fanduel/wt-build) | [![Build status](https://badge.buildkite.com/8ac6556be2e63cb34fc4b4045dad426faf9907e3726d486f60.svg)](https://buildkite.com/fanduel/wt-build) |
-
-- [@fanduel/wt](#fanduelwt)
+- [wt](#wt)
     - [Installation](#installation)
     - [Setup](#setup)
     - [Upgrading](#upgrading)
@@ -11,23 +7,14 @@
     - [Development Guide](#development-guide)
     - [Publishing a New Version](#publishing-a-new-version)
 
-# @fanduel/wt
+# wt
 
 Git worktree manager for bare-repo workflows. CLI tool that simplifies creating, navigating, and managing git worktrees using a bare-repo structure. Supports per-repo configuration, VS Code/Cursor workspace integration, and batch flags for AI agent use.
 
 ## Installation
 
-> [!IMPORTANT]
-> Access to FanDuel's Artifactory package registry is required. See the [JFrog Registry Setup guide](https://fanduel.atlassian.net/wiki/spaces/AWDW/pages/308181204994/FanDuel+JFrog+Registry+Setup) if you haven't configured this before.
-
 ```shell
-npm install -g @fanduel/wt
-```
-
-If you don't have the FanDuel registry configured globally, add it to `~/.npmrc`:
-
-```shell
-printf '@fanduel:registry=https://fanduel.pe.jfrog.io/artifactory/api/npm/fd-npm/\n//fanduel.pe.jfrog.io/artifactory/api/npm/fd-npm/:email=${FD_NPM_USERNAME}\n//fanduel.pe.jfrog.io/artifactory/api/npm/fd-npm/:_auth=${FD_NPM_AUTH_TOKEN}\n' >> ~/.npmrc
+npm install -g wtree
 ```
 
 ## Setup
@@ -44,7 +31,7 @@ This appends a small wrapper function to `~/.zshrc` (idempotent — safe to run 
 ## Upgrading
 
 ```shell
-npm install -g @fanduel/wt
+npm install -g wtree
 wt init --force
 source ~/.zshrc
 ```
@@ -142,14 +129,14 @@ repo-name/
 ├── .worktreerc.json            # Per-repo configuration
 ├── repo-name.code-workspace    # VS Code/Cursor workspace (if workspaceMode)
 ├── main/                       # Default branch worktree
-├── WIZ-123/                    # Feature worktree
-└── WIZ-456-add-feature/        # Another feature worktree
+├── feature-branch/             # Feature worktree
+└── PROJ-123-add-feature/       # Another feature worktree
 ```
 
 ## Development Guide
 
 ```shell
-git clone git@github.com:fanduel/wt.git
+git clone git@github.com:CallumDeas/wt.git
 cd wt
 npm install
 npm run build
@@ -162,23 +149,21 @@ Run tests:
 npx jest --watchman=false
 ```
 
-Report bugs, suggest features, or share ideas via [GitHub Issues](https://github.com/fanduel/wt/issues).
+Report bugs, suggest features, or share ideas via [GitHub Issues](https://github.com/CallumDeas/wt/issues).
 
 ## Publishing a New Version
 
-The buildkite pipeline is set to only run the publish step when a new tag is created in github for the repo.
-
-All tags are expected to follow standard semantic versioning practices.
+Releases are published to npm by tagging a new version on GitHub. All tags follow standard semantic versioning.
 
 > [!WARNING]
 > Once your PR is merged to `main`, please check that there are no other PRs being included in the version change.
 > If they are please do your due diligence in confirming that these changes are expected to be included with yours.
 > Any version bump will include all merged changes between the last version and this new one.
 
-To publish a new version, please follow these steps:
+To publish a new version:
 
-1. Navigate to https://github.com/fanduel/wt/releases
+1. Navigate to https://github.com/CallumDeas/wt/releases
 2. Click `Draft a new release`.
-3. Select the `Choose a tag` dropdown and manually enter the desired version number.
-4. Click `Generate release notes` and verify all of the expected changes are included within this version.
-5. Click `Publish release` and follow the desired run in [buildkite](https://buildkite.com/fanduel/wt-build)
+3. Select the `Choose a tag` dropdown and manually enter the desired version number (e.g. `v0.1.0`).
+4. Click `Generate release notes` and verify all of the expected changes are included.
+5. Click `Publish release` — the release workflow builds and publishes to npm.

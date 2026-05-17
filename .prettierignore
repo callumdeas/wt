@@ -2,9 +2,6 @@
 node_modules
 dist
 package-lock.json
-.github
-.npmrc
 .nvmrc
-*.properties
 tsconfig.json
 .husky

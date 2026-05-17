@@ -35,6 +35,10 @@ Each command lives in `src/commands/<name>.ts` and exports a `register<Name>(pro
 - **`workspace.ts`** — manages the `.code-workspace` file (add/remove/sync folders)
 - **`background.ts`** — spawns fully detached processes for post-create hooks, with macOS notifications on completion
 - **`output.ts`** — color-coded stderr output via picocolors; exports `pc` for custom styling
+- **`registry.ts`** — global cross-repo registry at `~/.config/wt/registry.json` (honors `WT_CONFIG_HOME`/`XDG_CONFIG_HOME`); auto-populated by `wt clone`/`wt convert`, used by `wt cd` and `wt clean`
+- **`gh.ts`** — `gh` CLI wrapper for GitHub data; `mergedPRsForRepo()` returns a `branchName → merged PR` map and tolerates missing/unauthenticated gh
+- **`worktree-remove.ts`** — shared removal logic for `wt rm` and `wt clean`: heavy-dir pre-clean, workspace sync, branch delete; throws `DirtyWorktreeError` so callers decide how to confirm force-removal
+- **`prompt.ts`** — thin `@inquirer/prompts` wrappers with Escape-to-cancel via `AbortSignal` (use these instead of importing from `@inquirer/prompts` directly)
 
 ### Bare repo structure
 

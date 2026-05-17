@@ -5,6 +5,7 @@ import { dirname, join } from "path";
 import updateNotifier from "update-notifier";
 import { fileURLToPath } from "url";
 import { registerCd } from "./commands/cd.js";
+import { registerClean } from "./commands/clean.js";
 import { registerClone } from "./commands/clone.js";
 import { registerConfig } from "./commands/config.js";
 import { registerConvert } from "./commands/convert.js";
@@ -58,6 +59,7 @@ registerOpen(program);
 registerConfig(program);
 registerWorkspace(program);
 registerRepos(program);
+registerClean(program);
 registerStart(program);
 
 // Show the banner when running bare `wt` with no subcommand

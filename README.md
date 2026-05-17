@@ -92,6 +92,20 @@ source ~/.zshrc
 | `wt workspace open`  | Open the workspace file in editor                  |
 | `wt workspace reset` | Delete the workspace file                          |
 
+### Cross-repo
+
+`wt clone` and `wt convert` auto-register repos in `~/.config/wt/registry.json`. For repos set up before this feature landed, run `wt repos discover` once to backfill the registry. Once repos are registered, `wt cd` can hop between them and `wt clean` can scan them all at once.
+
+| Command                      | Description                                                          |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `wt repos list`              | List registered repos (alias: bare `wt repos`)                       |
+| `wt repos add [path]`        | Register a repo (default: current directory)                         |
+| `wt repos rm <name-or-path>` | Remove a repo from the registry                                      |
+| `wt repos discover [dir]`    | Scan a directory tree for `.bare/` repos and register any new ones   |
+| `wt clean`                   | Find worktrees whose PR is merged on GitHub and offer to remove them |
+
+`wt clean` requires the [`gh`](https://cli.github.com) CLI to be installed and authenticated. It only suggests worktrees for branches with a merged PR — it never deletes without you explicitly selecting them.
+
 ### Flags
 
 Some commands accept flags for non-interactive (batch) use:
@@ -105,6 +119,9 @@ wt get <pattern> --first       # auto-select first match
 wt get <pattern> --exact       # exact branch name match only
 wt rm <name> --force --delete-branch
 wt config --post-create "npm ci" --editor cursor --workspace-mode
+wt repos discover ~/Repos --yes        # bulk-register every wt repo under a directory
+wt clean --all --yes --force           # remove every merged worktree, no prompts
+wt clean --repo my-repo --dry-run      # preview what would be removed in one repo
 ```
 
 Run `wt <command> --help` for full flag details on any command.

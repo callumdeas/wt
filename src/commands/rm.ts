@@ -1,28 +1,13 @@
 import type { Command } from "commander";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import ora from "ora";
-import { loadConfig } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { pc, promptTheme } from "../lib/output.js";
 import { confirm, select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
-import { workspaceRemove } from "../lib/workspace.js";
-
-const HEAVY_DIRS = [
-    "node_modules",
-    ".next",
-    "dist",
-    "build",
-    ".turbo",
-    ".cache",
-    ".parcel-cache",
-    ".nuxt",
-    ".output",
-    ".svelte-kit",
-];
+import { DirtyWorktreeError, removeWorktree } from "../lib/worktree-remove.js";
 
 export function registerRm(program: Command): void {
     program
@@ -43,7 +28,6 @@ export function registerRm(program: Command): void {
                 opts: { force?: boolean; deleteBranch?: boolean; keepBranch?: boolean },
             ) => {
                 const root = requireRoot();
-                const config = loadConfig(root);
                 const defBranch = git.defaultBranch(root);
 
                 // If no name, show interactive selection
@@ -81,10 +65,8 @@ export function registerRm(program: Command): void {
                 const resolvedWorktree = resolve(worktreeDir);
                 const insideWorktree = cwd === resolvedWorktree || cwd.startsWith(`${resolvedWorktree}/`);
 
-                // Get branch name before removing
-                const branchName = git.currentBranch(worktreeDir);
-
                 // Front-load branch deletion decision — ask before any destructive work
+                const branchName = git.currentBranch(worktreeDir);
                 let shouldDeleteBranch = false;
                 if (branchName && branchName !== defBranch) {
                     if (opts.deleteBranch) {
@@ -103,27 +85,15 @@ export function registerRm(program: Command): void {
 
                 const spinner = ora({ text: "Removing worktree...", stream: process.stderr }).start();
 
+                let result;
                 try {
-                    // Pre-delete heavy directories for speed (async so the spinner can animate)
-                    let deletedAny = false;
-                    for (const dir of HEAVY_DIRS) {
-                        const dirPath = join(worktreeDir, dir);
-                        if (existsSync(dirPath)) {
-                            if (!deletedAny) spinner.text = "Cleaning heavy directories...";
-                            deletedAny = true;
-                            await rm(dirPath, { recursive: true, force: true });
-                        }
-                    }
-
-                    // Remove worktree (force if we pre-deleted dirs or user requested)
-                    const forceRemove = deletedAny || opts.force === true;
-
-                    spinner.text = "Removing worktree...";
-
                     try {
-                        git.worktreeRemove(root, worktreeDir, forceRemove);
+                        result = await removeWorktree(root, name, {
+                            force: opts.force,
+                            deleteBranch: shouldDeleteBranch,
+                        });
                     } catch (err) {
-                        if (!opts.force) {
+                        if (err instanceof DirtyWorktreeError) {
                             spinner.stop();
                             output.warn("Worktree has uncommitted changes");
                             const forceConfirm = await confirm(
@@ -134,12 +104,12 @@ export function registerRm(program: Command): void {
                                 },
                                 { output: process.stderr },
                             );
-                            if (forceConfirm) {
-                                spinner.start("Removing worktree...");
-                                git.worktreeRemove(root, worktreeDir, true);
-                            } else {
-                                process.exit(1);
-                            }
+                            if (!forceConfirm) process.exit(1);
+                            spinner.start("Removing worktree...");
+                            result = await removeWorktree(root, name, {
+                                force: true,
+                                deleteBranch: shouldDeleteBranch,
+                            });
                         } else {
                             throw err;
                         }
@@ -154,14 +124,7 @@ export function registerRm(program: Command): void {
                     process.stdout.write(root);
                 }
 
-                // Remove from workspace
-                if (config.workspaceMode) {
-                    workspaceRemove(root, worktreeDir);
-                }
-
-                // Execute deferred branch deletion
-                if (shouldDeleteBranch) {
-                    git.branchDelete(root, branchName!);
+                if (result?.branchDeleted) {
                     output.success("Branch deleted");
                 }
             },

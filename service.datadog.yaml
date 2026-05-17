@@ -1,0 +1,60 @@
+### Full Fanduel Datadog v2.2 tagging schema can be found here: https://fanduel.atlassian.net/wiki/spaces/PE1/pages/310074016861/Tag+Baseline+-+Datadog+Service+Catalog---
+schema-version: v2.2
+dd-service: wt
+team: wizards-engineers
+application: wt  ## Where applicable, this can be the parent application or project that encompasses this repository/service
+description: Git worktree manager for bare-repo workflows. CLI tool that simplifies creating, navigating, and managing git worktrees using a   bare-repo structure. Supports per-repo configuration, VS Code/Cursor workspace integration, and batch flags for AI agent use.
+tier: p4
+lifecycle: experimental
+# type: custom
+# languages:
+#  - python
+#  - java
+contacts:
+  - type: slack
+    name: sportsbook-wizards
+    contact: https://fanduel.slack.com/archives/sportsbook-wizards ## Using the Slack Channel ID (found in channel “About” details) is preferred
+# integrations:
+#  pagerduty:
+#    service-url: https://fanduel.pagerduty.com/service-directory/[YOUR_ROTATION_ID]
+links:
+  - name: wt
+    type: repo
+    provider: github
+    url: https://github.com/fanduel/wt
+#   - name: Build Pipeline
+#     type: other
+#     provider: buildkite
+#     url: https://buildkite.com/fanduel/wt-build
+#   - name: Deploy Pipeline
+#     type: other
+#     provider: buildkite
+#     url: https://buildkite.com/fanduel/wt-deploy
+#   - name: Build & Deploy Pipeline
+#     type: other
+#     provider: buildkite
+#     url: https://buildkite.com/fanduel/wt-pipeline
+#   - name: Service Dashboard
+#     type: dashboard
+#     provider: datadog
+#     url: [YOUR_DASHBOARD_URL]
+#   - name: Service Documentation
+#     type: doc
+#     provider: confluence
+#     url: [YOUR_DOCUMENTATION_URL]
+#   - name: Service Runbook
+#     type: runbook
+#     provider: confluence
+#     url: [YOUR_RUNBOOK_URL]
+tags:
+  - kind:scripts
+  - division:fd
+  - domain:sportsbook
+  - vertical:sportsbook
+#  - platform:[YOUR_FANDUEL_PLATFORM]
+#  - deployment-ui:[YOUR_DEPLOYMENT_UI]
+#  - application-state:[YOUR_APPLICATION_STATE]
+#  - data-classification:[YOUR_DATA_CLASSIFICATION]
+#  - regulated-sox:false
+#  - regulated-gli:false
+#  - regulated-pci:false

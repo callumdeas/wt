@@ -1,0 +1,89 @@
+{
+    "name": "@fanduel/wt",
+    "author": "wizards-engineers",
+    "type": "module",
+    "version": "0.0.0",
+    "main": "dist/index.js",
+    "scripts": {
+        "prepare": "husky",
+        "lint": "npm run lint:prettier && eslint",
+        "lint:prettier": "prettier --check '**/*.{md,json,js,ts}'",
+        "format": "prettier --write '**/*.{md,json,js,ts}'",
+        "test": "jest",
+        "ci:test": "jest --ci --coverage --reporters=default",
+        "build": "npm run lint && rm -rf dist/* && tsc && tsc --build tsconfig.json"
+    },
+    "engines": {
+        "node": "^22",
+        "npm": ">=8"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.14.0",
+        "@types/eslint__js": "^8.42.3",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.9.0",
+        "dotenv": "^16.4.5",
+        "eslint": "^9.14.0",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-plugin-unicorn": "^56.0.0",
+        "husky": "^9.1.6",
+        "jest": "^29.7.0",
+        "lint-staged": "^15.2.10",
+        "prettier": "^3.3.3",
+        "prettier-plugin-organize-imports": "^4.1.0",
+        "ts-jest": "^29.2.5",
+        "ts-node": "^10.9.2",
+        "tsc-files": "^1.1.4",
+        "typescript": "^5.6.3",
+        "typescript-eslint": "^8.13.0"
+    },
+    "jest": {
+        "clearMocks": true,
+        "extensionsToTreatAsEsm": [
+            ".ts"
+        ],
+        "moduleNameMapper": {
+            "^(\\.{1,2}/.*)\\.js$": "$1"
+        },
+        "transform": {
+            "^.+\\.[tj]sx?$": [
+                "ts-jest",
+                {
+                    "useESM": true
+                }
+            ]
+        },
+        "testMatch": [
+            "**/?(*.)+(test).[jt]s?(x)"
+        ],
+        "collectCoverageFrom": [
+            "src/**/*.ts",
+            "!**/*.test.ts"
+        ],
+        "coverageReporters": [
+            "lcov"
+        ],
+        "coverageDirectory": "reports",
+        "testEnvironment": "node",
+        "preset": "ts-jest",
+        "testLocationInResults": true
+    },
+    "prettier": {
+        "printWidth": 120,
+        "tabWidth": 4,
+        "plugins": [
+            "prettier-plugin-organize-imports"
+        ]
+    },
+    "lint-staged": {
+        "*.[jt]s": [
+            "eslint --cache"
+        ],
+        "*.ts": [
+            "tsc-files --noEmit"
+        ],
+        "*.{md,json,js,ts}": [
+            "prettier --write"
+        ]
+    }
+}

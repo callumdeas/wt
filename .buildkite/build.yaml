@@ -1,0 +1,93 @@
+steps:
+  - group: ":toolbox:  Build checks  :toolbox:"
+    key: "build-checks"
+    steps:
+      - command:
+          - npm run lint:prettier
+          - npx eslint .
+        label: ":eslint: :prettier: run lint"
+        key: "ci-lint"
+        plugins:
+          - ssh://git@github.com/fanduel/private-npm-buildkite-plugin#v2.2.0
+          - seek-oss/docker-ecr-cache#v2.1.1:
+              secrets:
+                - id=npmrc,src=.npmrc
+              cache-on:
+                - package-lock.json
+              target: dev
+          - docker#v5.12.0:
+              mount-checkout: false
+              mount-buildkite-agent: true
+              propagate-environment: true
+              workdir: /app
+              volumes: ["./src:/app/src",
+                        "./package.json:/app/package.json"]
+        agents:
+          queue: sportsbook-tests
+
+      - command:
+          - npm run ci:test
+        label: ":jest: run test"
+        key: "ci-test"
+        artifact_paths: reports/**
+        plugins:
+          - ssh://git@github.com/fanduel/private-npm-buildkite-plugin#v2.2.0
+          - seek-oss/docker-ecr-cache#v2.1.1:
+              secrets:
+                - id=npmrc,src=.npmrc
+              cache-on:
+                - package-lock.json
+              target: dev
+              build-args:
+                FD_NPM_AUTH_TOKEN: $$FD_NPM_AUTH_TOKEN_READ
+                FD_NPM_USERNAME: $$FD_NPM_READ_USERNAME
+          - docker#v5.12.0:
+              mount-checkout: false
+              mount-buildkite-agent: true
+              propagate-environment: true
+              workdir: /app
+              volumes: ["./reports:/app/reports",
+                        "./src:/app/src",
+                        "./package.json:/app/package.json"]
+        agents:
+          queue: sportsbook-tests
+
+      # UNCOMMENT ONCE SONARCLOUD PIPELINE IS SET UP
+      # - label: ":sonarcloud: Sonar Analysis"
+      #   key: "ci-sonar-analysis"
+      #   depends_on:
+      #     - "ci-test"
+      #   pipe-gen:
+      #     type: step/sonarcloud-coverage-analysis
+      #     args:
+      #       project_name: "wt"
+      #       build_agent: "sportsbook-tests"
+      #       result_path: "reports/*"
+      #       project_version: "{env.BUILDKITE_BRANCH}_{env.BUILDKITE_BUILD_NUMBER}"
+      #     agents:
+      #       queue: sportsbook-tests
+
+  - wait: ~
+    depends_on:
+      - "build-checks"
+
+  - label: "Publish Package"
+    depends_on:
+      - build-checks
+    if: build.tag != null
+    key: publish
+    commands:
+      - npm ci
+      - npm run build
+      - npm version $BUILDKITE_TAG --no-git-tag-version
+      - npm publish
+    plugins:
+      - ssh://git@github.com/fanduel/private-npm-buildkite-plugin#v2.2.0:
+          publish: online-channels-npm
+      - docker#v5.12.0:
+          mount-buildkite-agent: true
+          propagate-environment: true
+          mount-ssh-agent: true
+          workdir: /app
+    agents:
+      queue: sportsbook-build

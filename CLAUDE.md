@@ -36,6 +36,31 @@ Each command lives in `src/commands/<name>.ts` and exports a `register<Name>(pro
 - **`background.ts`** — spawns fully detached processes for post-create hooks, with macOS notifications on completion
 - **`output.ts`** — color-coded stderr output via picocolors; exports `pc` for custom styling
 
+### Interactive prompts (`src/lib/prompt.ts`)
+
+Wraps `@inquirer/prompts` with Escape-key cancellation support. All prompts (`select`, `confirm`, `checkbox`, `input`) use this module — never import inquirer directly. Use `promptTheme` (exported from `output.ts`) to keep prompt styling consistent with the CLI's color scheme. On Escape, prompts emit `AbortPromptError`; on Ctrl+C, `ExitPromptError` — both are caught centrally in `cli.ts`.
+
+### Exit codes
+
+- `process.exit(1)` — validation or execution errors
+- `process.exitCode = 0` — graceful prompt cancellation (Escape key)
+- `process.exitCode = 130` — Ctrl+C (POSIX 128 + SIGINT)
+
+### Testing
+
+Tests split into two layers:
+
+- **`test/lib/`** — unit tests for individual `src/lib/` modules
+- **`test/e2e/`** — end-to-end tests that spawn the actual CLI binary
+
+E2E tests share a `test/e2e/helpers.ts` with: `runWt()` (spawns CLI, captures stdout/stderr), `runGit()`, `createRemote()`, `makeTmpDir()`. All tests use a `GIT_ENV` object that sets a fixed git identity, suppresses system git config, and sets `NO_COLOR=1` for deterministic output. Lifecycle/workflow E2E tests are **ordered and stateful by design** — they intentionally cascade failures to model real multi-step workflows.
+
+Jest runs in ESM mode via `ts-jest`; module mapping rewrites `.js` imports back to `.ts` source files. Run a single file with:
+
+```shell
+npx jest --watchman=false test/e2e/new.test.ts
+```
+
 ### Bare repo structure
 
 ```

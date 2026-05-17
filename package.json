@@ -32,7 +32,9 @@
         "lint:prettier": "prettier --check '**/*.{md,json,js,ts}'",
         "format": "prettier --write '**/*.{md,json,js,ts}'",
         "test": "jest",
-        "ci:test": "jest --ci --coverage --reporters=default",
+        "test:unit": "jest test/lib/",
+        "test:e2e": "npm run build && jest test/e2e/ --testTimeout=60000",
+        "ci:test": "npm run build && jest --ci --coverage --reporters=default",
         "build": "rm -rf dist/* && tsc",
         "link": "npm run build && npm link . && chmod +x dist/cli.js"
     },
@@ -95,6 +97,7 @@
             "lcov"
         ],
         "coverageDirectory": "reports",
+        "coverageProvider": "v8",
         "testEnvironment": "node",
         "preset": "ts-jest",
         "testLocationInResults": true
@@ -110,7 +113,7 @@
         "*.[jt]s": [
             "eslint --cache"
         ],
-        "*.ts": [
+        "src/**/*.ts": [
             "tsc-files --noEmit"
         ],
         "*.{md,json,js,ts}": [

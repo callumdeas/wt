@@ -162,18 +162,24 @@ export function registerRm(program: Command): void {
                     process.exit(1);
                 }
 
-                if (!existsSync(worktreeDir)) {
-                    output.error(`Worktree not found: ${worktreeDir}`);
-                    process.exit(1);
-                }
-
                 // Detect if the user's shell is inside the worktree being removed
                 const cwd = resolve(process.cwd());
                 const resolvedWorktree = resolve(worktreeDir);
                 const insideWorktree = cwd === resolvedWorktree || cwd.startsWith(`${resolvedWorktree}/`);
 
                 // Front-load branch deletion decision — ask before any destructive work
-                const branchName = git.currentBranch(worktreeDir);
+                let branchName: string | null;
+                if (existsSync(worktreeDir)) {
+                    branchName = git.currentBranch(worktreeDir);
+                } else {
+                    // Directory is gone — confirm git still knows about it, then read branch from its list entry
+                    const staleEntry = git.worktreeList(root).find((e) => e.path === worktreeDir);
+                    if (!staleEntry) {
+                        output.error(`Worktree not found: ${worktreeDir}`);
+                        process.exit(1);
+                    }
+                    branchName = staleEntry.branch ?? null;
+                }
                 let shouldDeleteBranch = false;
                 if (branchName && branchName !== defBranch) {
                     if (opts.deleteBranch) {

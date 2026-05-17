@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -110,6 +110,18 @@ export function createNormalRepo(baseDir: string): { repoPath: string; remoteUrl
     runGit(["push", "-u", "origin", "main"], repoPath);
 
     return { repoPath, remoteUrl: `file://${remotePath}` };
+}
+
+/**
+ * Poll until a file exists or the timeout elapses. Rejects on timeout.
+ * Used in async tests that need to wait for a detached background process to write a file.
+ */
+export async function waitForFile(filePath: string, timeoutMs = 3000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!existsSync(filePath)) {
+        if (Date.now() >= deadline) throw new Error(`Timed out waiting for: ${filePath}`);
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
 }
 
 /**

@@ -13,6 +13,7 @@ import { registerInit } from "./commands/init.js";
 import { registerLs } from "./commands/ls.js";
 import { registerNew } from "./commands/new.js";
 import { registerOpen } from "./commands/open.js";
+import { registerRepos } from "./commands/repos.js";
 import { registerRm } from "./commands/rm.js";
 import { registerSetup } from "./commands/setup.js";
 import { registerStart } from "./commands/start.js";
@@ -56,6 +57,7 @@ registerUpdate(program);
 registerOpen(program);
 registerConfig(program);
 registerWorkspace(program);
+registerRepos(program);
 registerStart(program);
 
 // Show the banner when running bare `wt` with no subcommand

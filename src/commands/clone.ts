@@ -5,6 +5,7 @@ import { basename, resolve } from "node:path";
 import { postSetupFlow } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
+import { registerRepo } from "../lib/registry.js";
 
 export function registerClone(program: Command): void {
     program
@@ -82,6 +83,11 @@ export function registerClone(program: Command): void {
                 output.dim(`  Bare:     ${absDir}/.bare`);
                 output.dim(`  Worktree: ${worktreeDir}`);
                 output.blank();
+                try {
+                    registerRepo(absDir);
+                } catch {
+                    /* best-effort — never fail a clone */
+                }
 
                 await postSetupFlow(absDir, worktreeDir, opts);
             },

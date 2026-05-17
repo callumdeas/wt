@@ -13,6 +13,15 @@ Git worktree manager for bare-repo workflows. CLI tool that simplifies creating,
 
 ## Installation
 
+Via Homebrew (recommended):
+
+```shell
+brew tap callumdeas/wt
+brew install wt
+```
+
+Or via npm:
+
 ```shell
 npm install -g wtree
 ```
@@ -31,7 +40,10 @@ This appends a small wrapper function to `~/.zshrc` (idempotent — safe to run 
 ## Upgrading
 
 ```shell
-npm install -g wtree
+brew upgrade wt        # if installed via Homebrew
+# or
+npm install -g wtree   # if installed via npm
+
 wt init --force
 source ~/.zshrc
 ```

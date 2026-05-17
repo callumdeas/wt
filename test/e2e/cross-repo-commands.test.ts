@@ -1,7 +1,7 @@
 /**
- * E2E tests for cross-repo support added to `wt ls`, `wt rm`, and `wt open`.
+ * E2E tests for cross-repo support added to `wt ls` and `wt rm`.
  */
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GIT_ENV, createRemote, makeTmpDir, runGit, runWt } from "./helpers.js";
@@ -146,34 +146,6 @@ describe("wt rm --repo <name> <worktree>", () => {
             cwd: baseA,
             env: wtEnv(),
         });
-        expect(result.status).toBe(1);
-        expect(result.stderr).toContain("Worktree not found");
-    });
-});
-
-// ---------------------------------------------------------------------------
-// wt open --repo (error paths + happy path with no-op editor)
-// ---------------------------------------------------------------------------
-
-describe("wt open --repo <name>", () => {
-    beforeAll(() => {
-        // Configure repo-a to use /usr/bin/true as the editor so wt open exits 0 without launching a real editor
-        writeFileSync(join(repoA, ".worktreerc.json"), JSON.stringify({ editor: "/usr/bin/true" }));
-    });
-
-    it("opens the specified worktree (exits 0)", () => {
-        const result = runWt(["open", "main", "--repo", "repo-a"], { cwd: baseA, env: wtEnv() });
-        expect(result.status).toBe(0);
-    });
-
-    it("errors for an unknown repo", () => {
-        const result = runWt(["open", "main", "--repo", "nonexistent"], { cwd: baseA, env: wtEnv() });
-        expect(result.status).toBe(1);
-        expect(result.stderr).toContain("Unknown repo");
-    });
-
-    it("errors when worktree name does not exist in target repo", () => {
-        const result = runWt(["open", "no-such-worktree", "--repo", "repo-a"], { cwd: baseA, env: wtEnv() });
         expect(result.status).toBe(1);
         expect(result.stderr).toContain("Worktree not found");
     });

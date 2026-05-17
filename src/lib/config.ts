@@ -9,17 +9,11 @@ import { confirm, input, select } from "./prompt.js";
 export interface WtConfig {
     postCreate: string;
     editor: string;
-    workspaceMode: boolean;
-    preStart: string;
-    startCmd: string;
 }
 
 const DEFAULTS: WtConfig = {
     postCreate: "",
     editor: "code",
-    workspaceMode: true,
-    preStart: "",
-    startCmd: "",
 };
 
 const CONFIG_FILE = ".worktreerc.json";
@@ -59,15 +53,6 @@ function parseLegacy(content: string): Partial<WtConfig> {
                 break;
             case "EDITOR_CMD":
                 config.editor = value;
-                break;
-            case "WORKSPACE_MODE":
-                config.workspaceMode = value === "true";
-                break;
-            case "PRE_START":
-                config.preStart = value;
-                break;
-            case "START_CMD":
-                config.startCmd = value;
                 break;
         }
     }
@@ -111,9 +96,6 @@ export function loadConfig(root: string): WtConfig {
     return {
         postCreate: raw.postCreate ?? DEFAULTS.postCreate,
         editor: raw.editor ?? DEFAULTS.editor,
-        workspaceMode: raw.workspaceMode ?? DEFAULTS.workspaceMode,
-        preStart: raw.preStart ?? DEFAULTS.preStart,
-        startCmd: raw.startCmd ?? DEFAULTS.startCmd,
     };
 }
 
@@ -273,49 +255,7 @@ export async function interactiveConfig(root: string, worktreeDir?: string): Pro
         stderrCtx,
     );
 
-    const workspaceMode = await confirm(
-        {
-            message: "Workspace mode? (one editor window covering all worktrees)",
-            default: existing.workspaceMode,
-            theme: promptTheme,
-        },
-        stderrCtx,
-    );
-
-    output.section("Dev server", "Optional — shortcuts for `wt start`. Skip if you don't use it.");
-    const wantsDevServer = await confirm(
-        {
-            message: "Configure dev server commands?",
-            default: Boolean(existing.preStart || existing.startCmd),
-            theme: promptTheme,
-        },
-        stderrCtx,
-    );
-
-    let preStart = existing.preStart;
-    let startCmd = existing.startCmd;
-    if (wantsDevServer) {
-        output.dim('  Pre-start runs before the dev server (e.g. free a port: "lsof -ti:8081 | xargs kill -9").');
-        preStart = await input(
-            {
-                message: "Pre-start command:",
-                default: existing.preStart || undefined,
-                theme: promptTheme,
-            },
-            stderrCtx,
-        );
-        output.dim('  Start runs the dev server itself (e.g. "yarn dev", "pnpm start").');
-        startCmd = await input(
-            {
-                message: "Start command:",
-                default: existing.startCmd || undefined,
-                theme: promptTheme,
-            },
-            stderrCtx,
-        );
-    }
-
-    const config: WtConfig = { postCreate, editor, workspaceMode, preStart, startCmd };
+    const config: WtConfig = { postCreate, editor };
     saveConfig(root, config);
 
     output.blank();
@@ -323,9 +263,6 @@ export async function interactiveConfig(root: string, worktreeDir?: string): Pro
     output.summaryBox([
         { key: "post-create", value: postCreate },
         { key: "editor", value: editor },
-        { key: "workspace", value: workspaceMode ? "enabled" : "disabled" },
-        { key: "pre-start", value: preStart },
-        { key: "start", value: startCmd },
     ]);
 
     return config;
@@ -335,7 +272,6 @@ export interface PostSetupOpts {
     config?: boolean;
     postCreate?: string;
     editor?: string;
-    workspaceMode?: boolean;
     install?: boolean;
 }
 
@@ -347,13 +283,10 @@ export async function postSetupFlow(root: string, worktreeDir: string, opts: Pos
     // Config creation
     if (opts.config === false) {
         // --no-config: skip entirely
-    } else if (opts.postCreate !== undefined || opts.editor !== undefined || opts.workspaceMode !== undefined) {
+    } else if (opts.postCreate !== undefined || opts.editor !== undefined) {
         const config: WtConfig = {
             postCreate: opts.postCreate ?? "",
             editor: opts.editor ?? "code",
-            workspaceMode: opts.workspaceMode ?? true,
-            preStart: "",
-            startCmd: "",
         };
         saveConfig(root, config);
         output.success("Created .worktreerc.json");

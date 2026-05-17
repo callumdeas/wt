@@ -20,9 +20,6 @@ describe("loadConfig", () => {
         expect(config).toEqual({
             postCreate: "",
             editor: "code",
-            workspaceMode: true,
-            preStart: "",
-            startCmd: "",
         });
     });
 
@@ -32,39 +29,23 @@ describe("loadConfig", () => {
             JSON.stringify({
                 postCreate: "npm ci",
                 editor: "cursor",
-                workspaceMode: false,
-                preStart: "lsof -ti:8081 | xargs kill -9 2>/dev/null || true",
-                startCmd: "yarn dev",
             }),
         );
 
         const config = loadConfig(TEST_DIR);
         expect(config.postCreate).toBe("npm ci");
         expect(config.editor).toBe("cursor");
-        expect(config.workspaceMode).toBe(false);
-        expect(config.preStart).toBe("lsof -ti:8081 | xargs kill -9 2>/dev/null || true");
-        expect(config.startCmd).toBe("yarn dev");
     });
 
     it("auto-migrates legacy .worktreerc", () => {
         writeFileSync(
             join(TEST_DIR, ".worktreerc"),
-            [
-                "# Worktree configuration",
-                'POST_CREATE="yarn install"',
-                "EDITOR_CMD=cursor",
-                "WORKSPACE_MODE=true",
-                'START_CMD="yarn dev bundler"',
-                'PRE_START="echo hello"',
-            ].join("\n"),
+            ["# Worktree configuration", 'POST_CREATE="yarn install"', "EDITOR_CMD=cursor"].join("\n"),
         );
 
         const config = loadConfig(TEST_DIR);
         expect(config.postCreate).toBe("yarn install");
         expect(config.editor).toBe("cursor");
-        expect(config.workspaceMode).toBe(true);
-        expect(config.startCmd).toBe("yarn dev bundler");
-        expect(config.preStart).toBe("echo hello");
 
         // Verify migration artifacts
         expect(existsSync(join(TEST_DIR, ".worktreerc.json"))).toBe(true);
@@ -78,9 +59,6 @@ describe("saveConfig", () => {
         saveConfig(TEST_DIR, {
             postCreate: "npm i",
             editor: "code",
-            workspaceMode: true,
-            preStart: "",
-            startCmd: "",
         });
 
         const raw = readFileSync(join(TEST_DIR, ".worktreerc.json"), "utf-8");
@@ -102,11 +80,10 @@ describe("migrateIfNeeded", () => {
     });
 
     it("migrates and returns true", () => {
-        writeFileSync(join(TEST_DIR, ".worktreerc"), "EDITOR_CMD=vim\nWORKSPACE_MODE=false");
+        writeFileSync(join(TEST_DIR, ".worktreerc"), "EDITOR_CMD=vim");
         expect(migrateIfNeeded(TEST_DIR)).toBe(true);
 
         const config = JSON.parse(readFileSync(join(TEST_DIR, ".worktreerc.json"), "utf-8"));
         expect(config.editor).toBe("vim");
-        expect(config.workspaceMode).toBe(false);
     });
 });

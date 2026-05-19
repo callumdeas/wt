@@ -19,6 +19,7 @@ export const GIT_ENV: NodeJS.ProcessEnv = {
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
     NO_COLOR: "1",
+    WT_NO_UPDATE_CHECK: "1",
 };
 
 export interface RunResult {

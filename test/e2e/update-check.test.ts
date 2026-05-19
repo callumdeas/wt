@@ -17,7 +17,13 @@ describe("update notification", () => {
     let configDir: string;
 
     function env(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-        return { ...GIT_ENV, WT_CONFIG_HOME: configDir, WT_CURRENT_VERSION: "0.5.0", ...extra };
+        return {
+            ...GIT_ENV,
+            WT_NO_UPDATE_CHECK: undefined,
+            WT_CONFIG_HOME: configDir,
+            WT_CURRENT_VERSION: "0.5.0",
+            ...extra,
+        };
     }
 
     function writeCacheFile(latestVersion: string): void {

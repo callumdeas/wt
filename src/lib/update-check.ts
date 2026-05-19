@@ -55,6 +55,7 @@ export function getUpdateNotification(currentVersion: string): string | null {
 }
 
 export function spawnUpdateCheck(): void {
+    if (process.env["WT_NO_UPDATE_CHECK"]) return;
     const cache = readCache();
     if (cache && Date.now() - cache.checkedAt < CHECK_INTERVAL_MS) return;
     try {

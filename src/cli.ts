@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { program } from "commander";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { printBanner } from "./lib/banner.js";
@@ -26,6 +28,39 @@ if (updateNotification) {
 
 // Spawn background update check (detached, honours 24h interval)
 spawnUpdateCheck();
+
+// When invoked as `doubleut`, nudge the user toward `wt` once per day.
+const invokedBin = process.argv[1] ?? "";
+if (invokedBin.endsWith("/doubleut") || invokedBin.endsWith("\\doubleut")) {
+    const configBase = process.env["WT_CONFIG_HOME"] ?? process.env["XDG_CONFIG_HOME"] ?? join(homedir(), ".config");
+    const hintFile = join(configBase, "wt", "doubleut-hint.json");
+    let shouldHint = true;
+    if (existsSync(hintFile)) {
+        try {
+            const { shownAt } = JSON.parse(readFileSync(hintFile, "utf-8")) as { shownAt: number };
+            if (Date.now() - shownAt < 24 * 60 * 60 * 1000) shouldHint = false;
+        } catch {
+            // corrupted file — show the hint
+        }
+    }
+    if (shouldHint) {
+        process.on("exit", () => {
+            try {
+                process.stderr.write(
+                    `\n  ${pc.cyan("✦")} ${pc.dim("Tip: you ran")} ${pc.cyan("doubleut")} ${pc.dim("— the shorter alias is")} ${pc.bold(pc.cyan("wt"))} ${pc.dim("(same thing)")}\n\n`,
+                );
+            } catch {
+                // stderr write failure is silently ignored
+            }
+        });
+        try {
+            mkdirSync(join(configBase, "wt"), { recursive: true });
+            writeFileSync(hintFile, JSON.stringify({ shownAt: Date.now() }));
+        } catch {
+            // best-effort — don't crash if we can't write the hint file
+        }
+    }
+}
 
 program.name("wt").description("Git worktree manager for bare-repo workflows").version(currentVersion);
 

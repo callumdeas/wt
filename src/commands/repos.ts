@@ -2,13 +2,25 @@ import type { Command } from "commander";
 import { existsSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import * as output from "../lib/output.js";
-import { pc, promptTheme } from "../lib/output.js";
+import { exitWithError, pc, promptTheme } from "../lib/output.js";
 import { checkbox, confirm } from "../lib/prompt.js";
 import { listRepos, registerRepo, unregisterRepo } from "../lib/registry.js";
 import { findRoot } from "../lib/root.js";
 
 export function registerRepos(program: Command): void {
-    const repos = program.command("repos").description("Manage registered repositories");
+    const repos = program
+        .command("repos")
+        .description("Manage registered repositories")
+        .addHelpText(
+            "after",
+            `\n${pc.bold("Subcommands:")}\n` +
+                pc.dim(
+                    "  wt repos list                        # list all registered repos\n" +
+                        "  wt repos add [path]                  # register current or given repo\n" +
+                        "  wt repos rm <name-or-path>           # remove from registry\n" +
+                        "  wt repos discover [dir] --yes        # scan and register without prompts\n",
+                ),
+        );
 
     repos.action(() => listAction());
 
@@ -26,8 +38,7 @@ export function registerRepos(program: Command): void {
             const target = resolve(repoPath ?? process.cwd());
 
             if (!existsSync(join(target, ".bare"))) {
-                output.error(`Not a wt-managed repository (no .bare found): ${target}`);
-                process.exit(1);
+                exitWithError(`Not a wt-managed repository (no .bare found): ${target}`);
             }
 
             registerRepo(target, opts.name);
@@ -45,8 +56,7 @@ export function registerRepos(program: Command): void {
             const match = all.find((r) => r.path === abs || r.name === target);
 
             if (!match) {
-                output.error(`Not found in registry: ${target}`);
-                process.exit(1);
+                exitWithError(`Not found in registry: ${target}`);
             }
 
             if (!opts.yes) {
@@ -77,8 +87,7 @@ export function registerRepos(program: Command): void {
         .action(async (dir: string | undefined, opts: { depth: number; yes?: boolean }) => {
             const scanRoot = resolve(dir ?? process.cwd());
             if (!existsSync(scanRoot)) {
-                output.error(`Directory not found: ${scanRoot}`);
-                process.exit(1);
+                exitWithError(`Directory not found: ${scanRoot}`);
             }
 
             const found = scanForBareRepos(scanRoot, opts.depth);

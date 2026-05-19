@@ -5,6 +5,7 @@ import { basename, resolve } from "node:path";
 import { postSetupFlow } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
+import { exitWithError } from "../lib/output.js";
 import { registerRepo } from "../lib/registry.js";
 
 export function registerClone(program: Command): void {
@@ -33,8 +34,7 @@ export function registerClone(program: Command): void {
                 const absDir = resolve(dir);
 
                 if (existsSync(absDir)) {
-                    output.error(`Directory '${dir}' already exists`);
-                    process.exit(1);
+                    exitWithError(`Directory '${dir}' already exists`);
                 }
 
                 output.info(`Creating bare worktree structure in ${dir}...`);

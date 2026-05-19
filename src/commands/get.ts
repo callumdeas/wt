@@ -1,15 +1,14 @@
 import type { Command } from "commander";
-import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { prepareLogFile, spawnBackground } from "../lib/background.js";
+import { runPostCreate } from "../lib/background.js";
 import { loadConfig } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc, promptTheme } from "../lib/output.js";
+import { exitWithError, pc, promptTheme } from "../lib/output.js";
 import { select } from "../lib/prompt.js";
 import { requireRoot } from "../lib/root.js";
-import { collectUntrackedFiles, copyUntrackedFiles } from "../lib/untracked.js";
+import { copyUntrackedFromDefault } from "../lib/untracked.js";
 
 export function registerGet(program: Command): void {
     program
@@ -74,10 +73,9 @@ export function registerGet(program: Command): void {
             }
 
             if (matches.length === 0) {
-                output.error(`No branch found matching: ${pattern}`);
                 output.dim("Available remote branches:");
                 remoteBranches.slice(0, 20).forEach((b) => output.dim(`  ${b}`));
-                process.exit(1);
+                exitWithError(`No branch found matching: ${pattern}`);
             }
 
             // Select branch
@@ -110,9 +108,8 @@ export function registerGet(program: Command): void {
             const worktreeDir = join(root, dirName);
 
             if (existsSync(worktreeDir)) {
-                output.error(`Worktree already exists at ${worktreeDir}`);
                 output.dim(`Use: wt cd ${dirName}`);
-                process.exit(1);
+                exitWithError(`Worktree already exists at ${worktreeDir}`);
             }
 
             // Create worktree tracking the remote branch
@@ -133,41 +130,18 @@ export function registerGet(program: Command): void {
 
             // Copy untracked files (e.g. .env) from the default branch worktree before post-create
             const defBranch = git.defaultBranch(root);
-            const defWorktreeDir = join(root, defBranch);
-            if (existsSync(defWorktreeDir)) {
-                const files = collectUntrackedFiles(defWorktreeDir);
-                const copied = copyUntrackedFiles(defWorktreeDir, worktreeDir, files);
-                if (copied.length > 0) {
-                    output.success(`Copied ${copied.length} untracked file(s) from ${defBranch}/`);
-                    for (const f of copied) output.dim(`  ${f}`);
-                }
-            }
+            copyUntrackedFromDefault(root, defBranch, worktreeDir);
 
             // Run post-create
             if (config.postCreate) {
-                const runForeground = opts.foreground || !process.stdin.isTTY;
-                if (runForeground) {
-                    output.info("Running post-create...");
-                    output.dim(`  Command: ${config.postCreate}`);
-                    execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
-                    output.success("Post-create complete");
-                } else {
-                    const logFile = prepareLogFile(root, dirName);
-                    try {
-                        spawnBackground({
-                            cmd: config.postCreate,
-                            cwd: worktreeDir,
-                            logFile,
-                            notifyTitle: "wt",
-                            notifyMessage: `Setup complete for ${branchName}`,
-                        });
-                        output.info("Running post-create in background — you can start working now");
-                        output.dim(`  Command: ${config.postCreate}`);
-                        output.dim(`  Log:     ${logFile}`);
-                    } catch {
-                        output.warn("Could not start background setup — run wt setup manually");
-                    }
-                }
+                runPostCreate({
+                    postCreate: config.postCreate,
+                    worktreeDir,
+                    root,
+                    dirName,
+                    branchName,
+                    foreground: opts.foreground,
+                });
             }
 
             // Output path for shell wrapper to cd into

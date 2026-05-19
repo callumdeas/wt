@@ -5,7 +5,7 @@ import type { CrossRepoSelectConfig } from "../lib/cross-repo-select.js";
 import { crossRepoSelect } from "../lib/cross-repo-select.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc } from "../lib/output.js";
+import { exitWithError, pc } from "../lib/output.js";
 import type { RegistryEntry } from "../lib/registry.js";
 import { listRepos } from "../lib/registry.js";
 import { findRoot } from "../lib/root.js";
@@ -18,11 +18,17 @@ export function registerCd(program: Command): void {
         .option("--repo <name>", "Select a specific registered repo by name or path")
         .addHelpText(
             "after",
-            `
-Scripting notes:
-  With --repo and [name], resolves entirely without prompts.
-  Without --repo, defaults to the current repo or the cross-repo picker.
-  Tab / Shift-Tab cycles through registered repos interactively.`,
+            `\n${pc.bold("Non-interactive usage (no prompts):")}\n` +
+                pc.dim(
+                    "  wt cd main                     # worktree by name in the current repo\n" +
+                        "  wt cd --repo my-repo main      # worktree in a specific registered repo\n",
+                ) +
+                `\n${pc.bold("Interactive usage:")}\n` +
+                pc.dim(
+                    "  wt cd                          # picker within current repo\n" +
+                        "  Tab / Shift-Tab cycles through registered repos.\n" +
+                        "  Escape cancels.\n",
+                ),
         )
         .action(async (name: string | undefined, opts: { repo?: string }) => {
             const currentRoot = findRoot();
@@ -35,8 +41,7 @@ Scripting notes:
             if (opts.repo) {
                 const idx = findRepoIndex(repos, opts.repo);
                 if (idx === -1) {
-                    output.error(`Unknown repo: ${opts.repo}`);
-                    process.exit(1);
+                    exitWithError(`Unknown repo: ${opts.repo}`);
                 }
                 activeIdx = idx;
             } else if (currentRoot) {
@@ -47,9 +52,8 @@ Scripting notes:
                     adHocRoot = currentRoot;
                 }
             } else if (repos.length === 0) {
-                output.error("Not in a worktree-managed repository (no .bare found)");
                 output.dim("  Register repos with: wt repos add [path]");
-                process.exit(1);
+                exitWithError("Not in a worktree-managed repository (no .bare found)");
             }
 
             // Effective list: registered repos, or ad-hoc fallback for unregistered current repo
@@ -57,8 +61,7 @@ Scripting notes:
                 adHocRoot !== null ? [{ path: adHocRoot, name: basename(adHocRoot), addedAt: "" }] : repos;
 
             if (effectiveRepos.length === 0) {
-                output.error("No repositories available. Register one with: wt repos add [path]");
-                process.exit(1);
+                exitWithError("No repositories available. Register one with: wt repos add [path]");
             }
 
             // Direct name argument — resolve without prompt
@@ -66,8 +69,7 @@ Scripting notes:
                 const root = effectiveRepos[activeIdx]!.path;
                 const target = join(root, name);
                 if (!existsSync(target)) {
-                    output.error(`Worktree not found: ${target}`);
-                    process.exit(1);
+                    exitWithError(`Worktree not found: ${target}`);
                 }
                 warnIfNoWrapper();
                 process.stdout.write(target);
@@ -86,8 +88,7 @@ Scripting notes:
 
             const firstRepo = effectiveRepos[activeIdx]!;
             if ((worktreesByRepo[activeIdx] ?? []).length === 0) {
-                output.error(`No worktrees found in: ${firstRepo.name}`);
-                process.exit(1);
+                exitWithError(`No worktrees found in: ${firstRepo.name}`);
             }
 
             const filterModeRef = { current: false };

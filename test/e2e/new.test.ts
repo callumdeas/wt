@@ -97,4 +97,53 @@ describe("wt get", () => {
         expect(existsSync(copied)).toBe(true);
         expect(readFileSync(copied, "utf-8")).toBe("SECRET=fromMain\n");
     });
+
+    it("matches with --exact for an exact branch name", () => {
+        const result = runWt(["get", "existing-branch", "--exact"], { cwd: join(repoDir, "main"), env });
+        expect(result.status).toBe(0);
+        expect(existsSync(join(repoDir, "existing-branch"))).toBe(true);
+    });
+
+    it("fails with --exact when the branch name doesn't match exactly", () => {
+        const result = runWt(["get", "existing", "--exact"], { cwd: join(repoDir, "main"), env });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("No branch found matching");
+    });
+
+    it("auto-selects first match with --first when multiple branches match", () => {
+        // Push a second branch that also matches "existing"
+        runGit(["checkout", "-b", "existing-other"], join(repoDir, "main"));
+        runGit(["push", "-u", "origin", "existing-other"], join(repoDir, "main"));
+        runGit(["checkout", "main"], join(repoDir, "main"));
+
+        const result = runWt(["get", "existing", "--first"], { cwd: join(repoDir, "main"), env });
+        expect(result.status).toBe(0);
+        // Should have picked one of the two without prompting
+        const branchCreated =
+            existsSync(join(repoDir, "existing-branch")) || existsSync(join(repoDir, "existing-other"));
+        expect(branchCreated).toBe(true);
+    });
+
+    it("errors when no branch matches the pattern", () => {
+        const result = runWt(["get", "totally-unknown-xyz", "--exact"], { cwd: join(repoDir, "main"), env });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("No branch found matching");
+    });
+
+    it("derives directory name from ticket pattern (PROJ-123 → PROJ-123)", () => {
+        runGit(["checkout", "-b", "feature/PROJ-42/add-widget"], join(repoDir, "main"));
+        runGit(["push", "-u", "origin", "feature/PROJ-42/add-widget"], join(repoDir, "main"));
+        runGit(["checkout", "main"], join(repoDir, "main"));
+
+        const result = runWt(["get", "PROJ-42", "--exact"], { cwd: join(repoDir, "main"), env });
+        expect(result.status).toBe(1); // --exact won't match partial
+
+        const result2 = runWt(["get", "feature/PROJ-42/add-widget", "--exact"], {
+            cwd: join(repoDir, "main"),
+            env,
+        });
+        expect(result2.status).toBe(0);
+        // Ticket pattern extracts the dir name
+        expect(existsSync(join(repoDir, "PROJ-42"))).toBe(true);
+    });
 });

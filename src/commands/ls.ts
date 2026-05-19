@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import { basename } from "node:path";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc } from "../lib/output.js";
+import { exitWithError, pc } from "../lib/output.js";
 import { findRepo, listRepos } from "../lib/registry.js";
 import { requireRoot } from "../lib/root.js";
 
@@ -13,6 +13,15 @@ export function registerLs(program: Command): void {
         .description("List all worktrees with branch info")
         .option("--repo <name>", "List worktrees for a specific registered repo")
         .option("--all", "List worktrees for all registered repos")
+        .addHelpText(
+            "after",
+            `\n${pc.bold("Examples:")}\n` +
+                pc.dim(
+                    "  wt ls                    # current repo\n" +
+                        "  wt ls --repo my-repo     # specific registered repo\n" +
+                        "  wt ls --all              # all registered repos\n",
+                ),
+        )
         .action((opts: { repo?: string; all?: boolean }) => {
             const cwd = process.cwd();
 
@@ -33,8 +42,7 @@ export function registerLs(program: Command): void {
             if (opts.repo) {
                 const entry = findRepo(opts.repo);
                 if (!entry) {
-                    output.error(`Unknown repo: ${opts.repo}`);
-                    process.exit(1);
+                    exitWithError(`Unknown repo: ${opts.repo}`);
                 }
                 root = entry.path;
             } else {

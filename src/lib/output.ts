@@ -12,6 +12,11 @@ export function error(msg: string): void {
     console.error(pc.red(`✗ ${msg}`));
 }
 
+export function exitWithError(msg: string): never {
+    error(msg);
+    process.exit(1);
+}
+
 export function success(msg: string): void {
     console.error(pc.green(`✓ ${msg}`));
 }

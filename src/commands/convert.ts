@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { postSetupFlow } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc, promptTheme } from "../lib/output.js";
+import { exitWithError, pc, promptTheme } from "../lib/output.js";
 import { checkbox, confirm } from "../lib/prompt.js";
 import { registerRepo } from "../lib/registry.js";
 import { collectUntrackedFiles, copyUntrackedFiles } from "../lib/untracked.js";
@@ -124,18 +124,15 @@ export function registerConvert(program: Command): void {
 
                 // --- Validation ---
                 if (!git.isNormalGitRepo(root)) {
-                    output.error("Not a git repository (no .git directory found)");
-                    process.exit(1);
+                    exitWithError("Not a git repository (no .git directory found)");
                 }
 
                 if (existsSync(bareDir)) {
-                    output.error("Already a wt-managed repository (.bare exists)");
-                    process.exit(1);
+                    exitWithError("Already a wt-managed repository (.bare exists)");
                 }
 
                 if (!git.isCleanWorkingTree(root)) {
-                    output.error("Working tree has uncommitted changes. Commit or stash before running wt convert.");
-                    process.exit(1);
+                    exitWithError("Working tree has uncommitted changes. Commit or stash before running wt convert.");
                 }
 
                 output.blank();
@@ -259,8 +256,7 @@ export function registerConvert(program: Command): void {
                         }
                     }
 
-                    output.error(`Conversion failed: ${(err as Error).message}`);
-                    process.exit(1);
+                    exitWithError(`Conversion failed: ${(err as Error).message}`);
                 }
 
                 // --- Post-conversion steps (non-rollbackable) ---

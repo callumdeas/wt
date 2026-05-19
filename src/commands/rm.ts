@@ -6,7 +6,7 @@ import type { CrossRepoSelectConfig } from "../lib/cross-repo-select.js";
 import { crossRepoSelect } from "../lib/cross-repo-select.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc, promptTheme } from "../lib/output.js";
+import { exitWithError, pc, promptTheme } from "../lib/output.js";
 import { confirm, select } from "../lib/prompt.js";
 import type { RegistryEntry } from "../lib/registry.js";
 import { findRepo, listRepos } from "../lib/registry.js";
@@ -41,8 +41,7 @@ export function registerRm(program: Command): void {
                     // --repo specified: resolve from registry
                     const entry = findRepo(opts.repo);
                     if (!entry) {
-                        output.error(`Unknown repo: ${opts.repo}`);
-                        process.exit(1);
+                        exitWithError(`Unknown repo: ${opts.repo}`);
                     }
                     root = entry.path;
 
@@ -80,9 +79,8 @@ export function registerRm(program: Command): void {
                               : [];
 
                     if (effectiveRepos.length === 0) {
-                        output.error("Not in a worktree-managed repository (no .bare found)");
                         output.dim("  Register repos with: wt repos add [path]");
-                        process.exit(1);
+                        exitWithError("Not in a worktree-managed repository (no .bare found)");
                     }
 
                     // Build worktree lists; default branch is shown greyed out but not selectable
@@ -143,8 +141,7 @@ export function registerRm(program: Command): void {
 
                     const matchedRepo = removableRepos.find((r) => selected.startsWith(r.path + "/"));
                     if (!matchedRepo) {
-                        output.error("Could not determine repo root from selection");
-                        process.exit(1);
+                        exitWithError("Could not determine repo root from selection");
                     }
                     root = matchedRepo.path;
                     name = basename(selected);
@@ -159,9 +156,8 @@ export function registerRm(program: Command): void {
                 const defBranch = git.defaultBranch(root);
 
                 if (name === defBranch) {
-                    output.error(`Cannot remove the default branch worktree: ${pc.cyan(name)}`);
                     output.dim("  The default branch is protected. Use git directly if you really need this.");
-                    process.exit(1);
+                    exitWithError(`Cannot remove the default branch worktree: ${pc.cyan(name)}`);
                 }
 
                 // Detect if the user's shell is inside the worktree being removed
@@ -177,8 +173,7 @@ export function registerRm(program: Command): void {
                     // Directory is gone — confirm git still knows about it, then read branch from its list entry
                     const staleEntry = git.worktreeList(root).find((e) => e.path === worktreeDir);
                     if (!staleEntry) {
-                        output.error(`Worktree not found: ${worktreeDir}`);
-                        process.exit(1);
+                        exitWithError(`Worktree not found: ${worktreeDir}`);
                     }
                     branchName = staleEntry.branch ?? null;
                 }

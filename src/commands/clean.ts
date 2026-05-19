@@ -6,7 +6,7 @@ import type { MergedPR } from "../lib/gh.js";
 import { mergedPRsForRepo } from "../lib/gh.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc, promptTheme } from "../lib/output.js";
+import { exitWithError, pc, promptTheme } from "../lib/output.js";
 import { checkbox, confirm } from "../lib/prompt.js";
 import type { RegistryEntry } from "../lib/registry.js";
 import { listRepos } from "../lib/registry.js";
@@ -140,19 +140,17 @@ function resolveRepos(filter: string | undefined): RegistryEntry[] {
     }
 
     if (effective.length === 0) {
-        output.error("No wt-managed repos available.");
         output.dim("  Register one with: wt repos add [path]");
         output.dim("  Or scan a directory: wt repos discover [dir]");
-        process.exit(1);
+        exitWithError("No wt-managed repos available.");
     }
 
     if (filter) {
         const abs = resolve(filter);
         const match = effective.find((r) => r.name === filter || r.path === abs);
         if (!match) {
-            output.error(`Unknown repo: ${filter}`);
             output.dim(`  Available: ${effective.map((r) => r.name).join(", ")}`);
-            process.exit(1);
+            exitWithError(`Unknown repo: ${filter}`);
         }
         effective = [match];
     }

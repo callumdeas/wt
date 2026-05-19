@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import * as output from "./output.js";
 
 const MAX_LOGS = 20;
 
@@ -56,4 +57,53 @@ export function spawnBackground(opts: BackgroundOpts): void {
     });
     child.unref();
     closeSync(fd);
+}
+
+export interface PostCreateRunOpts {
+    postCreate: string;
+    worktreeDir: string;
+    root: string;
+    dirName: string;
+    branchName: string;
+    foreground?: boolean;
+    /** Called after a successful foreground run (e.g. to trigger a push). */
+    onForegroundComplete?: () => void;
+    /** Override the command run in background (e.g. to chain a push). Defaults to postCreate. */
+    backgroundCmd?: string;
+    /** Label shown in "Running X in background". Defaults to "post-create". */
+    backgroundLabel?: string;
+}
+
+export function runPostCreate(opts: PostCreateRunOpts): void {
+    const runForeground = opts.foreground ?? !process.stdin.isTTY;
+    if (runForeground) {
+        output.info("Running post-create...");
+        output.dim(`  Command: ${opts.postCreate}`);
+        try {
+            // postCreate is user-configured in .worktreerc.json, not raw CLI input
+            execSync(opts.postCreate, { cwd: opts.worktreeDir, stdio: "inherit" });
+            output.success("Post-create complete");
+        } catch {
+            output.warn("Post-create failed — continuing");
+        }
+        opts.onForegroundComplete?.();
+    } else {
+        const logFile = prepareLogFile(opts.root, opts.dirName);
+        const cmd = opts.backgroundCmd ?? opts.postCreate;
+        const label = opts.backgroundLabel ?? "post-create";
+        try {
+            spawnBackground({
+                cmd,
+                cwd: opts.worktreeDir,
+                logFile,
+                notifyTitle: "wt",
+                notifyMessage: `Setup complete for ${opts.branchName}`,
+            });
+            output.info(`Running ${label} in background — you can start working now`);
+            output.dim(`  Command: ${opts.postCreate}`);
+            output.dim(`  Log:     ${logFile}`);
+        } catch {
+            output.warn("Could not start background setup — run wt setup manually");
+        }
+    }
 }

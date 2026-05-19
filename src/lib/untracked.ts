@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import * as output from "./output.js";
 
 const GENERATED_DIRS = new Set([
     "node_modules",
@@ -37,6 +38,21 @@ export function collectUntrackedFiles(dir: string): string[] {
     const ignored = lsFiles(dir, ["--others", "--ignored", "--exclude-standard"]);
     const all = [...new Set([...untracked, ...ignored])];
     return all.filter((f) => !isGenerated(f));
+}
+
+/**
+ * Copy untracked files (e.g. .env) from the default branch worktree into a new worktree.
+ * No-ops if the default worktree directory doesn't exist yet.
+ */
+export function copyUntrackedFromDefault(root: string, defBranch: string, worktreeDir: string): void {
+    const defWorktreeDir = join(root, defBranch);
+    if (!existsSync(defWorktreeDir)) return;
+    const files = collectUntrackedFiles(defWorktreeDir);
+    const copied = copyUntrackedFiles(defWorktreeDir, worktreeDir, files);
+    if (copied.length > 0) {
+        output.success(`Copied ${copied.length} untracked file(s) from ${defBranch}/`);
+        for (const f of copied) output.dim(`  ${f}`);
+    }
 }
 
 /** Copies files (relative paths) from srcDir to destDir, preserving directory structure. Returns copied paths. */

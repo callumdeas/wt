@@ -1,14 +1,13 @@
 import type { Command } from "commander";
-import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { prepareLogFile, spawnBackground } from "../lib/background.js";
+import { runPostCreate } from "../lib/background.js";
 import { loadConfig } from "../lib/config.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
-import { pc } from "../lib/output.js";
+import { exitWithError, pc } from "../lib/output.js";
 import { requireRoot } from "../lib/root.js";
-import { collectUntrackedFiles, copyUntrackedFiles } from "../lib/untracked.js";
+import { copyUntrackedFromDefault } from "../lib/untracked.js";
 
 /**
  * Resolve the start-point ref for a new worktree branch.
@@ -18,8 +17,7 @@ function resolveBase(root: string, base: string | undefined, defBranch: string):
     if (!base) return `origin/${defBranch}`;
     if (git.remoteBranchExists(root, base)) return `origin/${base}`;
     if (git.branchExists(root, base)) return base;
-    output.error(`Branch "${base}" not found locally or on origin`);
-    process.exit(1);
+    exitWithError(`Branch "${base}" not found locally or on origin`);
 }
 
 export function registerNew(program: Command): void {
@@ -60,8 +58,7 @@ export function registerNew(program: Command): void {
             const worktreeDir = join(root, dirName);
 
             if (existsSync(worktreeDir)) {
-                output.error(`Worktree already exists at ${worktreeDir}`);
-                process.exit(1);
+                exitWithError(`Worktree already exists at ${worktreeDir}`);
             }
 
             // Fetch latest
@@ -89,49 +86,23 @@ export function registerNew(program: Command): void {
             output.dim(`  Directory: ${worktreeDir}`);
 
             // Copy untracked files (e.g. .env) from the default branch worktree before post-create
-            const defWorktreeDir = join(root, defBranch);
-            if (existsSync(defWorktreeDir)) {
-                const files = collectUntrackedFiles(defWorktreeDir);
-                const copied = copyUntrackedFiles(defWorktreeDir, worktreeDir, files);
-                if (copied.length > 0) {
-                    output.success(`Copied ${copied.length} untracked file(s) from ${defBranch}/`);
-                    for (const f of copied) output.dim(`  ${f}`);
-                }
-            }
+            copyUntrackedFromDefault(root, defBranch, worktreeDir);
 
             // Post-create and push ordering:
             // git push triggers pre-push hooks (e.g. husky) that may need
             // dependencies installed by postCreate, so push runs after it.
             if (config.postCreate) {
-                const runForeground = opts.foreground || !process.stdin.isTTY;
-                if (runForeground) {
-                    output.info("Running post-create...");
-                    output.dim(`  Command: ${config.postCreate}`);
-                    try {
-                        execSync(config.postCreate, { cwd: worktreeDir, stdio: "inherit" });
-                        output.success("Post-create complete");
-                    } catch {
-                        output.warn("Post-create failed — continuing with push");
-                    }
-                    git.push(worktreeDir, branch, true);
-                } else {
-                    const logFile = prepareLogFile(root, dirName);
-                    const pushCmd = `git -C "${worktreeDir}" push -u origin "${branch}"`;
-                    try {
-                        spawnBackground({
-                            cmd: `${config.postCreate}; ${pushCmd}`,
-                            cwd: worktreeDir,
-                            logFile,
-                            notifyTitle: "wt",
-                            notifyMessage: `Setup complete for ${branch}`,
-                        });
-                        output.info("Running post-create + push in background — you can start working now");
-                        output.dim(`  Command: ${config.postCreate}`);
-                        output.dim(`  Log:     ${logFile}`);
-                    } catch {
-                        output.warn("Could not start background setup — run wt setup manually");
-                    }
-                }
+                runPostCreate({
+                    postCreate: config.postCreate,
+                    worktreeDir,
+                    root,
+                    dirName,
+                    branchName: branch,
+                    foreground: opts.foreground,
+                    onForegroundComplete: () => git.push(worktreeDir, branch, true),
+                    backgroundCmd: `${config.postCreate}; git -C "${worktreeDir}" push -u origin "${branch}"`,
+                    backgroundLabel: "post-create + push",
+                });
             } else {
                 // No postCreate — push immediately (no hooks needing setup)
                 git.push(worktreeDir, branch, true);

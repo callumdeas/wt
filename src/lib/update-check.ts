@@ -38,13 +38,19 @@ function newerThan(a: string, b: string): boolean {
     return aPat > bPat;
 }
 
+function isHomebrewInstall(): boolean {
+    const bin = process.argv[1] ?? "";
+    return bin.includes("/homebrew/") || bin.includes("/Cellar/") || bin.includes("/linuxbrew/");
+}
+
 export function getUpdateNotification(currentVersion: string): string | null {
     if (currentVersion === "0.0.0") return null;
     const cache = readCache();
     if (!cache || !newerThan(cache.latestVersion, currentVersion)) return null;
+    const updateCmd = isHomebrewInstall() ? "brew upgrade wt" : "npm install -g doubleut";
     return (
         `  ${pc.yellow("↑")} Update available: ${pc.dim(currentVersion)} → ${pc.green(cache.latestVersion)}` +
-        `  ${pc.dim("Run:")} npm install -g doubleut`
+        `  ${pc.dim("Run:")} ${updateCmd}`
     );
 }
 

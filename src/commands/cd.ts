@@ -1,9 +1,10 @@
 import type { Command } from "commander";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { CrossRepoSelectConfig } from "../lib/cross-repo-select.js";
+import type { CrossRepoSelectConfig, WorktreeChoice } from "../lib/cross-repo-select.js";
 import { crossRepoSelect } from "../lib/cross-repo-select.js";
 import * as git from "../lib/git.js";
+import { groupWorktrees } from "../lib/groups.js";
 import * as output from "../lib/output.js";
 import { exitWithError, pc } from "../lib/output.js";
 import type { RegistryEntry } from "../lib/registry.js";
@@ -79,11 +80,42 @@ export function registerCd(program: Command): void {
             // Pre-load worktrees for all repos (fast — git worktree list is local)
             const worktreesByRepo = effectiveRepos.map((repo) => {
                 const entries = git.worktreeList(repo.path);
+                if (entries.length === 0) return [];
                 const maxLen = Math.max(...entries.map((e) => e.dirname.length));
-                return entries.map((e) => ({
-                    value: e.path,
-                    name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
-                }));
+                const grouped = groupWorktrees(entries);
+
+                if (!grouped.hasGroups) {
+                    return entries.map((e) => ({
+                        value: e.path,
+                        name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
+                    }));
+                }
+
+                const items: WorktreeChoice[] = [];
+                for (const key of grouped.order) {
+                    const groupEntries = grouped.byKey.get(key) ?? [];
+                    const isRealGroup = key !== "" && groupEntries.length >= 2;
+
+                    if (isRealGroup) {
+                        items.push({
+                            value: "",
+                            name: key,
+                            isGroupHeader: true,
+                            groupKey: key,
+                            groupCount: groupEntries.length,
+                        });
+                    }
+
+                    for (const e of groupEntries) {
+                        const indent = isRealGroup ? "  " : "";
+                        items.push({
+                            value: e.path,
+                            name: `${indent}${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
+                            groupKey: isRealGroup ? key : undefined,
+                        });
+                    }
+                }
+                return items;
             });
 
             const firstRepo = effectiveRepos[activeIdx]!;

@@ -15,10 +15,16 @@ import {
 import { pc } from "./output.js";
 import type { RegistryEntry } from "./registry.js";
 
-interface WorktreeChoice {
+export interface WorktreeChoice {
     value: string;
     name: string;
     disabled?: boolean;
+    /** True for group header rows (collapsible separators, not selectable as worktrees) */
+    isGroupHeader?: boolean;
+    /** Group prefix this item belongs to, or the header's own key */
+    groupKey?: string;
+    /** Number of items in the group — only set on group headers */
+    groupCount?: number;
 }
 
 /**
@@ -44,20 +50,12 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
     const { pageSize = 10, message = "📂 Select worktree:", actionLabel = "select" } = config;
     const [status, setStatus] = useState<"idle" | "done">("idle");
     const [repoIdx, setRepoIdx] = useState(config.initialRepoIdx);
-
-    const initialItems = config.worktreesByRepo[config.initialRepoIdx] ?? [];
-    const initialActive = Math.max(
-        0,
-        initialItems.findIndex((item) => !item.disabled),
-    );
-    const [active, setActive] = useState(initialActive);
+    const [collapsed, setCollapsed] = useState<string[]>([]);
 
     const [filter, setFilter] = useState("");
     const [filterMode, setFilterMode] = useState(false);
 
     if (config.filterModeRef) config.filterModeRef.current = filterMode;
-
-    const items = useMemo(() => config.worktreesByRepo[repoIdx] ?? [], [repoIdx]);
 
     const visibleIndices = useMemo(() => {
         if (!filter) return config.repos.map((_, i) => i);
@@ -65,20 +63,60 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
         return config.repos.map((_, i) => i).filter((i) => config.repos[i]!.name.toLowerCase().includes(lower));
     }, [filter]);
 
-    const prefix = usePrefix({ status });
+    // Compute visible items for the current repo, respecting collapsed groups.
+    const visibleItems = useMemo(() => {
+        const all = config.worktreesByRepo[repoIdx] ?? [];
+        if (collapsed.length === 0) return all;
+        const cset = new Set(collapsed);
+        return all.filter((item) => item.isGroupHeader || !item.groupKey || !cset.has(item.groupKey));
+    }, [repoIdx, collapsed]);
 
-    const firstEnabled = (list: WorktreeChoice[]) =>
-        Math.max(
-            0,
-            list.findIndex((item) => !item.disabled),
-        );
-    const prevEnabled = (list: WorktreeChoice[], from: number) => {
+    const isSelectable = (item: WorktreeChoice) => !item.disabled && !item.isGroupHeader;
+
+    const firstSelectable = (list: WorktreeChoice[]) => Math.max(0, list.findIndex(isSelectable));
+    const prevSelectable = (list: WorktreeChoice[], from: number) => {
         for (let i = from - 1; i >= 0; i--) if (!list[i]?.disabled) return i;
         return from;
     };
-    const nextEnabled = (list: WorktreeChoice[], from: number) => {
+    const nextSelectable = (list: WorktreeChoice[], from: number) => {
         for (let i = from + 1; i < list.length; i++) if (!list[i]?.disabled) return i;
         return from;
+    };
+
+    const [active, setActive] = useState(firstSelectable(visibleItems));
+
+    const prefix = usePrefix({ status });
+
+    const toggleGroup = (groupKey: string) => {
+        const isCollapsing = !collapsed.includes(groupKey);
+        const newCollapsed = isCollapsing ? [...collapsed, groupKey] : collapsed.filter((k) => k !== groupKey);
+
+        // Compute what visibleItems will look like after the state update.
+        const all = config.worktreesByRepo[repoIdx] ?? [];
+        const cset = new Set(newCollapsed);
+        const newVisible =
+            newCollapsed.length === 0
+                ? all
+                : all.filter((item) => item.isGroupHeader || !item.groupKey || !cset.has(item.groupKey));
+
+        // Remap active to the same logical item in the new visible list.
+        const currentItem = visibleItems[active];
+        let newActive = active;
+        if (currentItem) {
+            const sameIdx = newVisible.findIndex(
+                (i) => i.value === currentItem.value && i.isGroupHeader === currentItem.isGroupHeader,
+            );
+            if (sameIdx !== -1) {
+                newActive = sameIdx;
+            } else {
+                // Active item was just hidden — move cursor to its group header.
+                const headerIdx = newVisible.findIndex((i) => i.isGroupHeader && i.groupKey === groupKey);
+                newActive = headerIdx !== -1 ? headerIdx : firstSelectable(newVisible);
+            }
+        }
+
+        setCollapsed(newCollapsed);
+        setActive(newActive);
     };
 
     const ensureActiveVisible = (newFilter: string) => {
@@ -90,19 +128,16 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
         if (matches.includes(repoIdx)) return;
         const newIdx = matches[0]!;
         setRepoIdx(newIdx);
-        setActive(firstEnabled(config.worktreesByRepo[newIdx] ?? []));
+        setActive(firstSelectable(config.worktreesByRepo[newIdx] ?? []));
     };
 
     useKeypress((key, rl) => {
         if (status !== "idle") return;
 
-        // KeypressEvent only declares name+ctrl publicly; readline also sets shift and sequence.
         const fullKey = key as { name: string; ctrl: boolean; shift?: boolean; sequence?: string };
         const shiftKey = fullKey.shift;
 
         if (filterMode) {
-            // Exit filter mode without aborting the prompt.
-            // Enter keeps the filter applied; Escape clears it.
             if (isEnterKey(key)) {
                 setFilterMode(false);
                 return;
@@ -120,7 +155,6 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
                 ensureActiveVisible(next);
                 return;
             }
-            // Append a single printable character (space..tilde).
             const ch = fullKey.sequence;
             if (ch && ch.length === 1 && ch >= " " && ch <= "~") {
                 rl.clearLine(0);
@@ -133,8 +167,10 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
         }
 
         if (isEnterKey(key)) {
-            const selected = items[active];
-            if (selected && !selected.disabled) {
+            const selected = visibleItems[active];
+            if (selected?.isGroupHeader && selected.groupKey) {
+                toggleGroup(selected.groupKey);
+            } else if (selected && isSelectable(selected)) {
                 setStatus("done");
                 done(selected.value);
             }
@@ -149,18 +185,18 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
             const newIdx = visibleIndices[newVisiblePos]!;
             const newItems = config.worktreesByRepo[newIdx] ?? [];
             setRepoIdx(newIdx);
-            setActive(firstEnabled(newItems));
+            setActive(firstSelectable(newItems));
         } else if (isUpKey(key)) {
             rl.clearLine(0);
-            setActive(prevEnabled(items, active));
+            setActive(prevSelectable(visibleItems, active));
         } else if (isDownKey(key)) {
             rl.clearLine(0);
-            setActive(nextEnabled(items, active));
+            setActive(nextSelectable(visibleItems, active));
         }
     });
 
     if (status === "done") {
-        return `${prefix} ${pc.bold(message)} ${pc.cyan(items[active]?.name ?? "")}`;
+        return `${prefix} ${pc.bold(message)} ${pc.cyan(visibleItems[active]?.name ?? "")}`;
     }
 
     const showTabBar = config.repos.length > 1;
@@ -179,9 +215,17 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
     const separatorLine = showTabBar ? pc.dim("  " + "─".repeat(44)) : null;
 
     const page = usePagination({
-        items,
+        items: visibleItems,
         active,
         renderItem({ item, isActive }) {
+            if (item.isGroupHeader) {
+                const isCollapsed = item.groupKey ? collapsed.includes(item.groupKey) : false;
+                const indicator = isCollapsed ? "▶" : "▼";
+                const countStr = item.groupCount !== undefined ? pc.dim(` (${item.groupCount})`) : "";
+                const label = `${indicator} ${item.name}${countStr}`;
+                const cursor = isActive ? pc.cyan("❯") : " ";
+                return `${cursor} ${isActive ? pc.bold(pc.cyan(label)) : pc.dim(label)}`;
+            }
             if (item.disabled) {
                 return `  ${pc.dim(`🔒 ${item.name}`)}`;
             }
@@ -193,10 +237,13 @@ const _crossRepoSelect = createPrompt<string, CrossRepoSelectConfig>((config, do
         loop: false,
     });
 
+    const hasGroups = visibleItems.some((i) => i.isGroupHeader);
     const helpLine = pc.dim(
         filterMode
             ? `type to filter • ↵ apply • esc clear`
-            : `↑↓ navigate • ↵ ${actionLabel} • tab repo • / filter • esc cancel`,
+            : hasGroups
+              ? `↑↓ navigate • ↵ ${actionLabel}/expand • tab repo • / filter • esc cancel`
+              : `↑↓ navigate • ↵ ${actionLabel} • tab repo • / filter • esc cancel`,
     );
 
     return (
@@ -327,6 +374,10 @@ export function buildTabBar(args: BuildTabBarArgs): string {
  * Escape is handled by passing an AbortSignal via context — callers should
  * skip aborting while `config.filterModeRef.current` is true so escape can be
  * used to clear the filter without cancelling the whole prompt.
+ *
+ * When group headers are present (items with `isGroupHeader: true`), pressing
+ * Enter on a header collapses or expands that group. Navigation (↑↓) can land
+ * on group headers; Enter on a regular item still selects it.
  */
 export async function crossRepoSelect(
     config: CrossRepoSelectConfig,

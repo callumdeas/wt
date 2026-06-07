@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { basename } from "node:path";
 import * as git from "../lib/git.js";
+import { groupWorktrees } from "../lib/groups.js";
 import * as output from "../lib/output.js";
 import { exitWithError, pc } from "../lib/output.js";
 import { findRepo, listRepos } from "../lib/registry.js";
@@ -70,11 +71,34 @@ function printRepoWorktrees(root: string, cwd: string): void {
     }
 
     const maxLen = Math.max(...entries.map((e) => e.dirname.length));
+    const grouped = groupWorktrees(entries);
 
-    for (const entry of entries) {
-        const marker = entry.dirname === currentDirname ? pc.green("●") : " ";
-        const name = pc.bold(pc.cyan(entry.dirname.padEnd(maxLen)));
-        const branch = pc.yellow(entry.branch);
-        output.plain(`  ${marker} ${name}  →  ${branch}`);
+    if (!grouped.hasGroups) {
+        for (const entry of entries) {
+            const marker = entry.dirname === currentDirname ? pc.green("●") : " ";
+            const name = pc.bold(pc.cyan(entry.dirname.padEnd(maxLen)));
+            output.plain(`  ${marker} ${name}  →  ${pc.yellow(entry.branch)}`);
+        }
+        return;
+    }
+
+    let needBlank = false;
+    for (const key of grouped.order) {
+        const groupEntries = grouped.byKey.get(key) ?? [];
+        const isRealGroup = key !== "" && groupEntries.length >= 2;
+
+        if (isRealGroup) {
+            if (needBlank) output.blank();
+            output.plain(`  ${pc.bold(key)} ${pc.dim(`(${groupEntries.length})`)}`);
+        }
+
+        for (const entry of groupEntries) {
+            const marker = entry.dirname === currentDirname ? pc.green("●") : " ";
+            const name = pc.bold(pc.cyan(entry.dirname.padEnd(maxLen)));
+            const indent = isRealGroup ? "    " : "  ";
+            output.plain(`${indent}${marker} ${name}  →  ${pc.yellow(entry.branch)}`);
+        }
+
+        needBlank = true;
     }
 }

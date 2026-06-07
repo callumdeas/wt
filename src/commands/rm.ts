@@ -1,17 +1,42 @@
+import { Separator } from "@inquirer/prompts";
 import type { Command } from "commander";
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import ora from "ora";
-import type { CrossRepoSelectConfig } from "../lib/cross-repo-select.js";
-import { crossRepoSelect } from "../lib/cross-repo-select.js";
+import type { MergedPR } from "../lib/gh.js";
+import { mergedPRsForRepo } from "../lib/gh.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { exitWithError, pc, promptTheme } from "../lib/output.js";
-import { confirm, select } from "../lib/prompt.js";
+import { checkbox, confirm } from "../lib/prompt.js";
 import type { RegistryEntry } from "../lib/registry.js";
 import { findRepo, listRepos } from "../lib/registry.js";
 import { findRoot, requireRoot } from "../lib/root.js";
 import { DirtyWorktreeError, removeWorktree } from "../lib/worktree-remove.js";
+
+interface WorktreeItem {
+    repo: RegistryEntry;
+    dirname: string;
+    path: string;
+    branch: string;
+    mergedPr: MergedPR | null;
+}
+
+function choiceValue(item: WorktreeItem): string {
+    return `${item.repo.path}::${item.dirname}`;
+}
+
+function relativeTime(iso: string): string {
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return "";
+    const diffMs = Date.now() - then;
+    const days = Math.floor(diffMs / 86_400_000);
+    if (days < 1) return "today";
+    if (days < 7) return `${days}d ago`;
+    if (days < 30) return `${Math.floor(days / 7)}w ago`;
+    if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+    return `${Math.floor(days / 365)}y ago`;
+}
 
 export function registerRm(program: Command): void {
     program
@@ -35,43 +60,30 @@ export function registerRm(program: Command): void {
                 name: string | undefined,
                 opts: { repo?: string; force?: boolean; deleteBranch?: boolean; keepBranch?: boolean },
             ) => {
-                let root: string;
+                if (name) {
+                    // Non-interactive: name provided directly
+                    const root = opts.repo
+                        ? (() => {
+                              const entry = findRepo(opts.repo);
+                              if (!entry) exitWithError(`Unknown repo: ${opts.repo}`);
+                              return entry!.path;
+                          })()
+                        : requireRoot();
+                    await removeSingle(root, name, opts);
+                    return;
+                }
+
+                // Interactive: build effective repo list
+                let effectiveRepos: RegistryEntry[];
 
                 if (opts.repo) {
-                    // --repo specified: resolve from registry
                     const entry = findRepo(opts.repo);
-                    if (!entry) {
-                        exitWithError(`Unknown repo: ${opts.repo}`);
-                    }
-                    root = entry.path;
-
-                    if (!name) {
-                        const defBr = git.defaultBranch(root);
-                        const entries = git.worktreeList(root);
-                        const removable = entries.filter((e) => e.dirname !== defBr);
-                        if (removable.length === 0) {
-                            output.info(`No removable worktrees found in: ${entry.name}`);
-                            process.exit(1);
-                        }
-                        const maxLen = Math.max(...entries.map((e) => e.dirname.length));
-                        name = await select(
-                            {
-                                message: "🧹 Delete worktree:",
-                                choices: entries.map((e) => ({
-                                    value: e.dirname,
-                                    name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
-                                    disabled: e.dirname === defBr ? "🔒 default branch" : false,
-                                })),
-                                theme: promptTheme,
-                            },
-                            { output: process.stderr },
-                        );
-                    }
-                } else if (!name) {
-                    // No --repo, no name: cross-repo interactive picker
+                    if (!entry) exitWithError(`Unknown repo: ${opts.repo}`);
+                    effectiveRepos = [entry!];
+                } else {
                     const currentRoot = findRoot();
                     const repos = listRepos();
-                    const effectiveRepos: RegistryEntry[] =
+                    effectiveRepos =
                         repos.length > 0
                             ? repos
                             : currentRoot
@@ -82,161 +94,270 @@ export function registerRm(program: Command): void {
                         output.dim("  Register repos with: wt repos add [path]");
                         exitWithError("Not in a worktree-managed repository (no .bare found)");
                     }
-
-                    // Build worktree lists; default branch is shown greyed out but not selectable
-                    const worktreesByRepo = effectiveRepos.map((repo) => {
-                        const defBr = git.defaultBranch(repo.path);
-                        const entries = git.worktreeList(repo.path);
-                        const maxLen = Math.max(...entries.map((e) => e.dirname.length), 0);
-                        return entries.map((e) => ({
-                            value: e.path,
-                            name: `${pc.cyan(e.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(e.branch)}`,
-                            disabled: e.dirname === defBr,
-                        }));
-                    });
-
-                    // Only show repos that have at least one removable (non-default) worktree
-                    const removableRepos = effectiveRepos.filter((_, i) =>
-                        (worktreesByRepo[i] ?? []).some((w) => !w.disabled),
-                    );
-                    const removableByRepo = worktreesByRepo.filter((wts) => wts.some((w) => !w.disabled));
-
-                    if (removableRepos.length === 0) {
-                        output.info("No removable worktrees found (only default branches exist)");
-                        process.exit(1);
-                    }
-
-                    const initialRepoIdx = currentRoot
-                        ? Math.max(
-                              0,
-                              removableRepos.findIndex((r) => r.path === currentRoot),
-                          )
-                        : 0;
-
-                    const filterModeRef = { current: false };
-                    const promptConfig: CrossRepoSelectConfig = {
-                        repos: removableRepos,
-                        worktreesByRepo: removableByRepo,
-                        initialRepoIdx,
-                        message: "🧹 Delete worktree:",
-                        actionLabel: "delete",
-                        filterModeRef,
-                    };
-
-                    const controller = new AbortController();
-                    const onEscape = (_ch: string, key: { name: string }) => {
-                        if (key?.name === "escape" && !filterModeRef.current) controller.abort();
-                    };
-                    process.stdin.on("keypress", onEscape);
-
-                    let selected: string;
-                    try {
-                        selected = await crossRepoSelect(promptConfig, {
-                            output: process.stderr,
-                            signal: controller.signal,
-                        });
-                    } finally {
-                        process.stdin.removeListener("keypress", onEscape);
-                    }
-
-                    const matchedRepo = removableRepos.find((r) => selected.startsWith(r.path + "/"));
-                    if (!matchedRepo) {
-                        exitWithError("Could not determine repo root from selection");
-                    }
-                    root = matchedRepo.path;
-                    name = basename(selected);
-                } else {
-                    // No --repo, name provided: use current repo
-                    root = requireRoot();
                 }
 
-                // Resolve the actual path from git's list — worktrees may live at
-                // non-standard locations (e.g. .claude/worktrees/x) rather than root/x
-                const worktreeDir = git.worktreeList(root).find((e) => e.dirname === name)?.path ?? join(root, name);
-                const defBranch = git.defaultBranch(root);
+                // Load stale (merged PR) data with a spinner
+                const mergedByRepo = loadMergedPRs(effectiveRepos);
 
-                if (name === defBranch) {
-                    output.dim("  The default branch is protected. Use git directly if you really need this.");
-                    exitWithError(`Cannot remove the default branch worktree: ${pc.cyan(name)}`);
-                }
-
-                // Detect if the user's shell is inside the worktree being removed
                 const cwd = resolve(process.cwd());
-                const resolvedWorktree = resolve(worktreeDir);
-                const insideWorktree = cwd === resolvedWorktree || cwd.startsWith(`${resolvedWorktree}/`);
+                const items = buildItems(effectiveRepos, mergedByRepo, cwd);
 
-                // Front-load branch deletion decision — ask before any destructive work
-                let branchName: string | null;
-                if (existsSync(worktreeDir)) {
-                    branchName = git.currentBranch(worktreeDir);
-                } else {
-                    // Directory is gone — confirm git still knows about it, then read branch from its list entry
-                    const staleEntry = git.worktreeList(root).find((e) => e.path === worktreeDir);
-                    if (!staleEntry) {
-                        exitWithError(`Worktree not found: ${worktreeDir}`);
-                    }
-                    branchName = staleEntry.branch ?? null;
-                }
-                let shouldDeleteBranch = false;
-                if (branchName && branchName !== defBranch) {
-                    if (opts.deleteBranch) {
-                        shouldDeleteBranch = true;
-                    } else if (!opts.keepBranch) {
-                        shouldDeleteBranch = await confirm(
-                            {
-                                message: `Delete branch '${branchName}'?`,
-                                default: false,
-                                theme: promptTheme,
-                            },
-                            { output: process.stderr },
-                        );
-                    }
+                if (items.length === 0) {
+                    output.info("No removable worktrees found (only default branches exist)");
+                    process.exit(1);
                 }
 
-                const spinner = ora({ text: "Removing worktree...", stream: process.stderr }).start();
-
-                let result;
-                try {
-                    try {
-                        result = await removeWorktree(root, name, {
-                            force: opts.force,
-                            deleteBranch: shouldDeleteBranch,
-                        });
-                    } catch (err) {
-                        if (err instanceof DirtyWorktreeError) {
-                            spinner.stop();
-                            output.warn("Worktree has uncommitted changes");
-                            const forceConfirm = await confirm(
-                                {
-                                    message: "Force remove anyway? (changes will be lost)",
-                                    default: false,
-                                    theme: promptTheme,
-                                },
-                                { output: process.stderr },
-                            );
-                            if (!forceConfirm) process.exit(1);
-                            spinner.start("Removing worktree...");
-                            result = await removeWorktree(root, name, {
-                                force: true,
-                                deleteBranch: shouldDeleteBranch,
-                            });
-                        } else {
-                            throw err;
-                        }
-                    }
-                } finally {
-                    spinner.stop();
+                const selected = await pickWorktrees(items, effectiveRepos.length > 1);
+                if (selected.length === 0) {
+                    output.dim("Nothing selected.");
+                    return;
                 }
 
-                output.success("Worktree removed");
-
-                if (insideWorktree) {
-                    process.stdout.write(root);
-                }
-
-                if (result?.branchDeleted) {
-                    output.success("Branch deleted");
-                }
+                await removeMultiple(selected, opts, cwd);
             },
         );
+}
+
+function loadMergedPRs(repos: RegistryEntry[]): Map<string, Map<string, MergedPR>> {
+    const spinner = ora({ text: "Checking for merged PRs...", stream: process.stderr }).start();
+    const result = new Map<string, Map<string, MergedPR>>();
+    for (const repo of repos) {
+        result.set(repo.path, mergedPRsForRepo(repo.path));
+    }
+    spinner.stop();
+    return result;
+}
+
+function buildItems(
+    repos: RegistryEntry[],
+    mergedByRepo: Map<string, Map<string, MergedPR>>,
+    cwd: string,
+): WorktreeItem[] {
+    const items: WorktreeItem[] = [];
+    for (const repo of repos) {
+        const defBr = git.defaultBranch(repo.path);
+        const entries = git.worktreeList(repo.path);
+        const merged = mergedByRepo.get(repo.path) ?? new Map<string, MergedPR>();
+        for (const e of entries) {
+            if (e.dirname === defBr || e.branch === defBr) continue;
+            const wtAbs = resolve(e.path);
+            if (cwd === wtAbs || cwd.startsWith(`${wtAbs}/`)) continue;
+            items.push({
+                repo,
+                dirname: e.dirname,
+                path: e.path,
+                branch: e.branch ?? e.dirname,
+                mergedPr: e.branch ? (merged.get(e.branch) ?? null) : null,
+            });
+        }
+    }
+    return items;
+}
+
+async function pickWorktrees(items: WorktreeItem[], multiRepo: boolean): Promise<WorktreeItem[]> {
+    const maxLen = Math.max(...items.map((i) => i.dirname.length));
+
+    type Choice = { value: string; name: string; checked: boolean } | InstanceType<typeof Separator>;
+    const choices: Choice[] = [];
+
+    const byRepo = new Map<string, WorktreeItem[]>();
+    for (const item of items) {
+        const list = byRepo.get(item.repo.name) ?? [];
+        list.push(item);
+        byRepo.set(item.repo.name, list);
+    }
+
+    for (const [repoName, list] of byRepo) {
+        if (multiRepo) {
+            choices.push(new Separator(pc.magenta(`── ${repoName} ─`.padEnd(60, "─"))));
+        }
+        for (const item of list) {
+            const staleTag = item.mergedPr
+                ? ` ${pc.green("✓")} ${pc.dim("merged " + relativeTime(item.mergedPr.mergedAt))}`
+                : "";
+            choices.push({
+                value: choiceValue(item),
+                name: `${pc.cyan(item.dirname.padEnd(maxLen))}  ${pc.dim("→")}  ${pc.yellow(item.branch)}${staleTag}`,
+                checked: item.mergedPr !== null,
+            });
+        }
+    }
+
+    const picked = await checkbox(
+        {
+            message: "🧹 Select worktrees to remove:",
+            choices,
+            pageSize: Math.min(20, choices.length),
+            theme: promptTheme,
+        },
+        { output: process.stderr },
+    );
+
+    const pickedSet = new Set(picked);
+    return items.filter((i) => pickedSet.has(choiceValue(i)));
+}
+
+async function removeMultiple(
+    items: WorktreeItem[],
+    opts: { force?: boolean; deleteBranch?: boolean; keepBranch?: boolean },
+    cwd: string,
+): Promise<void> {
+    let shouldDeleteBranch: boolean;
+    if (opts.deleteBranch) {
+        shouldDeleteBranch = true;
+    } else if (opts.keepBranch) {
+        shouldDeleteBranch = false;
+    } else {
+        shouldDeleteBranch = await confirm(
+            {
+                message:
+                    items.length === 1
+                        ? `Delete branch '${items[0]!.branch}'?`
+                        : `Delete branches for all ${items.length} selected worktrees?`,
+                default: false,
+                theme: promptTheme,
+            },
+            { output: process.stderr },
+        );
+    }
+
+    let anyInsideWorktree: string | null = null;
+    let removed = 0;
+    let skipped = 0;
+
+    for (const item of items) {
+        const label = items.length === 1 ? item.dirname : `${item.repo.name}/${item.dirname}`;
+        const resolvedWorktree = resolve(item.path);
+        if (cwd === resolvedWorktree || cwd.startsWith(`${resolvedWorktree}/`)) {
+            anyInsideWorktree = item.repo.path;
+        }
+
+        const spinner = ora({ text: `Removing ${label}...`, stream: process.stderr }).start();
+        try {
+            await removeWorktree(item.repo.path, item.dirname, {
+                force: opts.force,
+                deleteBranch: shouldDeleteBranch,
+                quiet: items.length > 1,
+            });
+            spinner.succeed(`${label} ${pc.dim("removed")}`);
+            removed++;
+        } catch (err) {
+            if (err instanceof DirtyWorktreeError) {
+                spinner.stop();
+                output.warn(`${label} has uncommitted changes`);
+                const ok = await confirm(
+                    {
+                        message: `Force remove ${label}? (changes will be lost)`,
+                        default: false,
+                        theme: promptTheme,
+                    },
+                    { output: process.stderr },
+                );
+                if (!ok) {
+                    skipped++;
+                    continue;
+                }
+                const retrySpinner = ora({ text: `Removing ${label}...`, stream: process.stderr }).start();
+                try {
+                    await removeWorktree(item.repo.path, item.dirname, {
+                        force: true,
+                        deleteBranch: shouldDeleteBranch,
+                        quiet: items.length > 1,
+                    });
+                    retrySpinner.succeed(`${label} ${pc.dim("removed")}`);
+                    removed++;
+                } catch (retryErr) {
+                    retrySpinner.fail(`${label}: ${(retryErr as Error).message}`);
+                    skipped++;
+                }
+            } else {
+                spinner.fail(`${label}: ${(err as Error).message}`);
+                skipped++;
+            }
+        }
+    }
+
+    if (items.length > 1) {
+        output.blank();
+        output.success(`Removed ${removed} worktree(s)` + (skipped ? `, skipped ${skipped}` : ""));
+    } else if (removed === 1) {
+        output.success("Worktree removed");
+    }
+
+    if (anyInsideWorktree) {
+        process.stdout.write(anyInsideWorktree);
+    }
+}
+
+async function removeSingle(
+    root: string,
+    name: string,
+    opts: { force?: boolean; deleteBranch?: boolean; keepBranch?: boolean },
+): Promise<void> {
+    const worktreeDir = git.worktreeList(root).find((e) => e.dirname === name)?.path ?? join(root, name);
+    const defBranch = git.defaultBranch(root);
+
+    if (name === defBranch) {
+        output.dim("  The default branch is protected. Use git directly if you really need this.");
+        exitWithError(`Cannot remove the default branch worktree: ${pc.cyan(name)}`);
+    }
+
+    const cwd = resolve(process.cwd());
+    const resolvedWorktree = resolve(worktreeDir);
+    const insideWorktree = cwd === resolvedWorktree || cwd.startsWith(`${resolvedWorktree}/`);
+
+    let branchName: string | null;
+    if (existsSync(worktreeDir)) {
+        branchName = git.currentBranch(worktreeDir);
+    } else {
+        const staleEntry = git.worktreeList(root).find((e) => e.path === worktreeDir);
+        if (!staleEntry) exitWithError(`Worktree not found: ${worktreeDir}`);
+        branchName = staleEntry!.branch ?? null;
+    }
+
+    let shouldDeleteBranch = false;
+    if (branchName && branchName !== defBranch) {
+        if (opts.deleteBranch) {
+            shouldDeleteBranch = true;
+        } else if (!opts.keepBranch) {
+            shouldDeleteBranch = await confirm(
+                { message: `Delete branch '${branchName}'?`, default: false, theme: promptTheme },
+                { output: process.stderr },
+            );
+        }
+    }
+
+    const spinner = ora({ text: "Removing worktree...", stream: process.stderr }).start();
+    let result;
+    try {
+        try {
+            result = await removeWorktree(root, name, { force: opts.force, deleteBranch: shouldDeleteBranch });
+        } catch (err) {
+            if (err instanceof DirtyWorktreeError) {
+                spinner.stop();
+                output.warn("Worktree has uncommitted changes");
+                const forceConfirm = await confirm(
+                    { message: "Force remove anyway? (changes will be lost)", default: false, theme: promptTheme },
+                    { output: process.stderr },
+                );
+                if (!forceConfirm) process.exit(1);
+                spinner.start("Removing worktree...");
+                result = await removeWorktree(root, name, { force: true, deleteBranch: shouldDeleteBranch });
+            } else {
+                throw err;
+            }
+        }
+    } finally {
+        spinner.stop();
+    }
+
+    output.success("Worktree removed");
+
+    if (insideWorktree) {
+        process.stdout.write(root);
+    }
+
+    if (result?.branchDeleted) {
+        output.success("Branch deleted");
+    }
 }

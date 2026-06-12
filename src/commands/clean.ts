@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { basename, resolve } from "node:path";
 import ora from "ora";
 import type { MergedPR } from "../lib/gh.js";
-import { mergedPRsForRepo } from "../lib/gh.js";
+import { mergedPRsForBranches } from "../lib/gh.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { exitWithError, pc, promptTheme } from "../lib/output.js";
@@ -179,7 +179,10 @@ async function collectCandidates(repos: RegistryEntry[]): Promise<Candidate[]> {
                 continue;
             }
 
-            const merged = mergedPRsForRepo(repo.path);
+            const merged = mergedPRsForBranches(
+                repo.path,
+                worktrees.map((wt) => wt.branch),
+            );
             for (const wt of worktrees) {
                 const pr = merged.get(wt.branch);
                 if (pr) candidates.push({ repo, worktree: wt.dirname, branch: wt.branch, pr });

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import ora from "ora";
 import type { MergedPR } from "../lib/gh.js";
-import { mergedPRsForRepo } from "../lib/gh.js";
+import { mergedPRsForBranches } from "../lib/gh.js";
 import * as git from "../lib/git.js";
 import * as output from "../lib/output.js";
 import { exitWithError, pc, promptTheme } from "../lib/output.js";
@@ -19,6 +19,7 @@ interface WorktreeItem {
     dirname: string;
     path: string;
     branch: string;
+    hasBranch: boolean;
     mergedPr: MergedPR | null;
 }
 
@@ -96,16 +97,17 @@ export function registerRm(program: Command): void {
                     }
                 }
 
-                // Load stale (merged PR) data with a spinner
-                const mergedByRepo = loadMergedPRs(effectiveRepos);
-
                 const cwd = resolve(process.cwd());
-                const items = buildItems(effectiveRepos, mergedByRepo, cwd);
+                const items = buildItems(effectiveRepos, cwd);
 
                 if (items.length === 0) {
                     output.info("No removable worktrees found (only default branches exist)");
                     process.exit(1);
                 }
+
+                // Annotate with merged-PR data (stale detection), querying only
+                // the branches we actually have a worktree for.
+                annotateMergedPRs(items);
 
                 const selected = await pickWorktrees(items, effectiveRepos.length > 1);
                 if (selected.length === 0) {
@@ -118,26 +120,30 @@ export function registerRm(program: Command): void {
         );
 }
 
-function loadMergedPRs(repos: RegistryEntry[]): Map<string, Map<string, MergedPR>> {
+function annotateMergedPRs(items: WorktreeItem[]): void {
     const spinner = ora({ text: "Checking for merged PRs...", stream: process.stderr }).start();
-    const result = new Map<string, Map<string, MergedPR>>();
-    for (const repo of repos) {
-        result.set(repo.path, mergedPRsForRepo(repo.path));
+    const byRepo = new Map<string, WorktreeItem[]>();
+    for (const item of items) {
+        const list = byRepo.get(item.repo.path) ?? [];
+        list.push(item);
+        byRepo.set(item.repo.path, list);
+    }
+    for (const [repoPath, list] of byRepo) {
+        // Only worktrees on a real branch (not detached HEAD) can have a PR.
+        const branches = [...new Set(list.filter((i) => i.hasBranch).map((i) => i.branch))];
+        const merged = mergedPRsForBranches(repoPath, branches);
+        for (const item of list) {
+            if (item.hasBranch) item.mergedPr = merged.get(item.branch) ?? null;
+        }
     }
     spinner.stop();
-    return result;
 }
 
-function buildItems(
-    repos: RegistryEntry[],
-    mergedByRepo: Map<string, Map<string, MergedPR>>,
-    cwd: string,
-): WorktreeItem[] {
+function buildItems(repos: RegistryEntry[], cwd: string): WorktreeItem[] {
     const items: WorktreeItem[] = [];
     for (const repo of repos) {
         const defBr = git.defaultBranch(repo.path);
         const entries = git.worktreeList(repo.path);
-        const merged = mergedByRepo.get(repo.path) ?? new Map<string, MergedPR>();
         for (const e of entries) {
             if (e.dirname === defBr || e.branch === defBr) continue;
             const wtAbs = resolve(e.path);
@@ -146,8 +152,9 @@ function buildItems(
                 repo,
                 dirname: e.dirname,
                 path: e.path,
-                branch: e.branch ?? e.dirname,
-                mergedPr: e.branch ? (merged.get(e.branch) ?? null) : null,
+                branch: e.branch || e.dirname,
+                hasBranch: e.branch !== "",
+                mergedPr: null,
             });
         }
     }

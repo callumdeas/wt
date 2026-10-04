@@ -30,15 +30,18 @@ Each command lives in `src/commands/<name>.ts` and exports a `register<Name>(pro
 ### Core libraries (`src/lib/`)
 
 - **`git.ts`** — wraps git operations against the `.bare/` directory (worktree CRUD, branch operations, fetch, push, merge)
-- **`config.ts`** — loads/saves `.worktreerc.json`, auto-migrates legacy `.worktreerc` (KEY=VALUE) format, interactive config wizard
+- **`config.ts`** — loads/saves `.worktreerc.json` (`postCreate`, `editor`), auto-migrates legacy `.worktreerc` (KEY=VALUE) format, interactive config wizard
+- **`detect-setup.ts`** — suggests a post-create command from a worktree's manifests/lockfiles for the config wizard
+- **`untracked.ts`** — copies gitignored/untracked files (e.g. `.env*`) from the default worktree into a new one, skipping generated dirs (`node_modules`, `dist`, …)
 - **`root.ts`** — walks up from cwd looking for `.bare/` to find the repo root; `requireRoot()` throws if not found
-- **`workspace.ts`** — manages the `.code-workspace` file (add/remove/sync folders)
 - **`background.ts`** — spawns fully detached processes for post-create hooks, with macOS notifications on completion
 - **`output.ts`** — color-coded stderr output via picocolors; exports `pc` for custom styling
 - **`registry.ts`** — global cross-repo registry at `~/.config/wt/registry.json` (honors `WT_CONFIG_HOME`/`XDG_CONFIG_HOME`); auto-populated by `wt clone`/`wt convert`, used by `wt cd` and `wt clean`
 - **`gh.ts`** — `gh` CLI wrapper for GitHub data; `mergedPRsForRepo()` returns a `branchName → merged PR` map and tolerates missing/unauthenticated gh
-- **`worktree-remove.ts`** — shared removal logic for `wt rm` and `wt clean`: heavy-dir pre-clean, workspace sync, branch delete; throws `DirtyWorktreeError` so callers decide how to confirm force-removal
+- **`worktree-remove.ts`** — shared removal logic for `wt rm` and `wt clean`: heavy-dir pre-clean, branch delete; throws `DirtyWorktreeError` so callers decide how to confirm force-removal
 - **`prompt.ts`** — thin `@inquirer/prompts` wrappers with Escape-to-cancel via `AbortSignal` (use these instead of importing from `@inquirer/prompts` directly)
+- **`cross-repo-select.ts`** / **`groups.ts`** — the cross-repo picker and grouping of slash-prefixed branch names
+- **`update-check.ts`** / **`update-check-worker.ts`** — best-effort background npm update check (the "Update available" banner)
 
 ### Interactive prompts (`src/lib/prompt.ts`)
 
@@ -70,8 +73,7 @@ npx jest --watchman=false test/e2e/new.test.ts
 ```
 repo-name/
 ├── .bare/                    # bare git repository
-├── .worktreerc.json          # per-repo config (postCreate, editor, workspaceMode, preStart, startCmd)
-├── repo-name.code-workspace  # VS Code/Cursor workspace (if workspaceMode enabled)
+├── .worktreerc.json          # per-repo config (postCreate, editor)
 ├── main/                     # default branch worktree
 └── feature-branch/           # feature worktrees
 ```
@@ -82,6 +84,6 @@ repo-name/
 - **Kebab-case filenames**: enforced by eslint-plugin-unicorn
 - **4-space indentation, 120 char width**: prettier config in package.json
 - **Pre-commit hooks** (husky + lint-staged): eslint, tsc type-check, prettier on staged files
-- **Idempotent operations**: workspace add skips duplicates, config migration only runs once, `wt init --force` replaces old shell wrapper
+- **Idempotent operations**: config migration only runs once, `wt init --force` replaces old shell wrapper
 - **Background post-create**: `wt new` and `wt get` run postCreate in background (detached, logged to file) so the user gets their shell back immediately. Non-interactive sessions (no TTY on stdin) automatically run in foreground, so AI agents and CI get correct behavior without needing `--foreground`. The flag still exists for humans who want synchronous execution in a terminal
 - **AI-agent friendly**: every interactive prompt (confirm, select, input) **must** have a CLI flag or positional argument that bypasses it, so the command can be driven non-interactively by scripts and AI agents. Use the three-way pattern where appropriate: `--flag` to opt-in, `--no-flag` to opt-out, omit to prompt interactively (see `--install / --no-install` in `postSetupFlow` for the reference implementation). Ensure `--help` output gives clear guidance for non-interactive/agent usage

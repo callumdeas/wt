@@ -1,3 +1,9 @@
+---
+name: release
+description: Publish a new version of the doubleut (`wt`) CLI — pick the version, draft notes, create the GitHub release, and watch the Release workflow through npm publish and the Homebrew bump. Only run when the user explicitly asks to release.
+disable-model-invocation: true
+---
+
 # Release `wt`
 
 Follow these steps in order to publish a new version of the `doubleut` (`wt`) CLI.
@@ -92,21 +98,15 @@ Confirm the URL printed by `gh` and tell the user the Release workflow has been 
 
 ## Step 5 — Monitor CI
 
-Begin polling immediately after the release is created. The run to watch is the **Release** workflow triggered by `release` event on the new tag.
-
-Poll loop — run this every ~30 seconds and report status each cycle:
+Find the **Release** run the `release` event started on the new tag, then watch it to completion in
+the background (it takes a few minutes) and act on the completion notification:
 
 ```bash
-gh run list --limit 10 --json databaseId,displayTitle,status,conclusion,workflowName,event,createdAt \
-  --jq '.[] | select(.workflowName == "Release")'
+RUN_ID=$(gh run list --workflow release.yml --event release --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RUN_ID" --exit-status
 ```
 
-For each cycle, show:
-
-- Workflow name, run ID, status, elapsed time
-- A one-line summary of any steps that have completed
-
-Continue until the Release run reaches a terminal state (`completed`, `failure`, `cancelled`).
+If the run hasn't appeared yet, wait briefly and re-query — don't watch an older run.
 
 ### On success
 
@@ -132,7 +132,7 @@ Read the logs carefully and diagnose. Common failure modes and fixes:
 **Lint / format failure**
 
 - Fix: `npm run format`, then commit and push the formatted files.
-- Note: the workflow cannot be re-run in place because it ran against the tag commit, not `main`. You must delete the release and re-release after fixing:
+- Note: the workflow cannot be re-run in place because it ran against the tag commit, not `main`. After fixing, the release and tag must be deleted and recreated — **confirm with the user first** (it's a public release):
     ```bash
     gh release delete <tag> --yes
     git push origin --delete <tag>
